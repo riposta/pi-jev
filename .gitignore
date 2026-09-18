@@ -1,0 +1,18 @@
+node_modules/
+coverage/
+dist/
+
+# local jev runtime artefacts
+.pi/jev-log/
+.pi/jev-cache.json
+.pi/jev.json
+
+# editor
+.idea/
+*.swp
+.DS_Store
+
+# env
+.env
+.env.*
+!.env.example

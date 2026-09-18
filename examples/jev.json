@@ -1,0 +1,104 @@
+{
+  "apiKeyEnv": "TYPESAFE_API_KEY",
+  "model": "jev-latest",
+  "baseUrl": "https://api.typesafe.ai",
+
+  "budget": {
+    "maxRequestsPerSession": 200,
+    "maxTokensPerSession": 400000,
+    "onBreach": "disable",
+    "inputPricePerMTok": 0,
+    "outputPricePerMTok": 0
+  },
+
+  "residency": {
+    "enabled": false,
+    "allowedModels": [],
+    "allowedRepos": []
+  },
+
+  "redaction": {
+    "patterns": "default",
+    "maxStateChars": 120000
+  },
+
+  "modules": {
+    "router": {
+      "enabled": true,
+      "shadow": true,
+      "timeoutMs": 800,
+      "confidenceFloor": 0.55,
+      "clarifyThreshold": 0.7,
+      "readOnlyThreshold": 0.2,
+      "sensitiveThreshold": 0.6,
+      "skillRouting": false,
+      "thinkingBands": [
+        { "max": 0.75, "level": "off" },
+        { "max": 1.5, "level": "low" },
+        { "max": 3, "level": "high" }
+      ],
+      "tiers": {
+        "cheap": { "provider": "anthropic", "model": "claude-haiku-4-5", "thinking": "off" },
+        "standard": { "provider": "anthropic", "model": "claude-sonnet-5", "thinking": "low" },
+        "strong": { "provider": "anthropic", "model": "claude-opus-5", "thinking": "high" }
+      }
+    },
+
+    "gate": {
+      "enabled": true,
+      "shadow": true,
+      "timeoutMs": 400,
+      "allowBlock": false,
+      "onFailure": "allow",
+      "withoutUi": "deny",
+      "thresholds": {
+        "blockBlastRadius": 3.0,
+        "blockReversible": 0.3,
+        "blockUnverifiedCode": 0.8,
+        "confirmBlastRadius": 2.0,
+        "confirmIntentDrift": 0.4,
+        "confirmSecrets": 0.6,
+        "confirmExfiltration": 0.6,
+        "confidenceFloor": 0.5
+      },
+      "skipTools": ["read", "ls", "grep", "find"],
+      "skipCommands": "default",
+      "diskCache": true
+    },
+
+    "shield": {
+      "enabled": true,
+      "shadow": true,
+      "timeoutMs": 1500,
+      "injectionThreshold": 0.7,
+      "secretThreshold": 0.6,
+      "personalDataThreshold": 0.6
+    },
+
+    "prune": {
+      "enabled": false,
+      "shadow": true,
+      "timeoutMs": 1500,
+      "minLines": 150,
+      "relevanceThreshold": 0.6
+    },
+
+    "watchdog": {
+      "enabled": false,
+      "shadow": true,
+      "timeoutMs": 1000,
+      "everyNTurns": 3,
+      "minTurns": 6,
+      "loopThreshold": 0.75,
+      "falseDoneThreshold": 0.7
+    }
+  },
+
+  "telemetry": {
+    "enabled": true,
+    "dir": ".pi/jev-log",
+    "logProbabilities": true,
+    "logStateHash": true,
+    "logStateContent": false
+  }
+}

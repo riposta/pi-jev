@@ -1,0 +1,100 @@
+{"prompt":"What does the `--strict` flag do in tsconfig?","tier":"cheap"}
+{"prompt":"Rename `getUser` to `fetchUser` across the file.","tier":"cheap"}
+{"prompt":"Fix the typo in the README title.","tier":"cheap"}
+{"prompt":"Add a missing semicolon in src/index.ts line 42.","tier":"cheap"}
+{"prompt":"Remove the unused `lodash` import.","tier":"cheap"}
+{"prompt":"Format src/config.ts with the project formatter.","tier":"cheap"}
+{"prompt":"Bump the version in package.json to 1.2.4.","tier":"cheap"}
+{"prompt":"Add `node_modules` to .gitignore.","tier":"cheap"}
+{"prompt":"What is the difference between `let` and `const`?","tier":"cheap"}
+{"prompt":"Explain what this regex matches: /^\\d{3}-\\d{4}$/.","tier":"cheap"}
+{"prompt":"Which file defines the `Config` type?","tier":"cheap"}
+{"prompt":"Delete the commented-out block at the end of utils.ts.","tier":"cheap"}
+{"prompt":"Change the port from 3000 to 3001 in dev config.","tier":"cheap"}
+{"prompt":"Add a trailing newline to the new file.","tier":"cheap"}
+{"prompt":"Sort the imports in src/app.ts alphabetically.","tier":"cheap"}
+{"prompt":"Rename the CSS class `btn-primary` to `buttonPrimary`.","tier":"cheap"}
+{"prompt":"Update the copyright year in LICENSE.","tier":"cheap"}
+{"prompt":"What command runs the test suite?","tier":"cheap"}
+{"prompt":"Convert this function to an arrow function.","tier":"cheap"}
+{"prompt":"Add a `console.log` to debug the value of `total`.","tier":"cheap"}
+{"prompt":"The login form returns 500 when the password contains a quote character.","tier":"standard"}
+{"prompt":"Fix the off-by-one error in the pagination helper.","tier":"standard"}
+{"prompt":"The date picker shows the wrong month in December.","tier":"standard"}
+{"prompt":"Add a `--verbose` flag to the CLI.","tier":"standard"}
+{"prompt":"Make the search endpoint case-insensitive.","tier":"standard"}
+{"prompt":"Write tests for the price calculation function.","tier":"standard"}
+{"prompt":"Add validation for the email field on signup.","tier":"standard"}
+{"prompt":"The retry logic never triggers on a 503.","tier":"standard"}
+{"prompt":"Implement cursor pagination for the `/users` endpoint.","tier":"standard"}
+{"prompt":"Extract the duplicated HTTP error handling into a helper.","tier":"standard"}
+{"prompt":"Why is the cache never invalidated after an update?","tier":"standard"}
+{"prompt":"Add a loading state to the dashboard component.","tier":"standard"}
+{"prompt":"The CSV export drops rows when a field contains a newline.","tier":"standard"}
+{"prompt":"Support multiple file uploads in the form.","tier":"standard"}
+{"prompt":"Move the auth middleware out of the route file.","tier":"standard"}
+{"prompt":"Fix the flaky test in tests/queue.test.ts.","tier":"standard"}
+{"prompt":"Add a health-check endpoint.","tier":"standard"}
+{"prompt":"The settings page loses changes when navigating away.","tier":"standard"}
+{"prompt":"Refactor the payment module to use the strategy pattern.","tier":"standard"}
+{"prompt":"Handle timezone conversion for scheduled jobs.","tier":"standard"}
+{"prompt":"The websocket reconnects too aggressively after a drop.","tier":"standard"}
+{"prompt":"Add structured logging to the request pipeline.","tier":"standard"}
+{"prompt":"Migrate the tests from Jest to Vitest.","tier":"standard"}
+{"prompt":"Fix the memory leak in the event listener cleanup.","tier":"standard"}
+{"prompt":"Add optimistic updates to the todo list.","tier":"standard"}
+{"prompt":"The importer chokes on files larger than 10MB.","tier":"standard"}
+{"prompt":"Implement soft-delete for comments.","tier":"standard"}
+{"prompt":"Why does the build pass locally but fail in CI?","tier":"standard"}
+{"prompt":"Add rate limiting to the public API.","tier":"standard"}
+{"prompt":"The dropdown closes when clicking inside it.","tier":"standard"}
+{"prompt":"Introduce a repository layer between services and the ORM.","tier":"strong"}
+{"prompt":"Design a migration from the monolith database to per-service schemas.","tier":"strong"}
+{"prompt":"The application deadlocks under concurrent writes; find the root cause.","tier":"strong"}
+{"prompt":"Rework the authentication flow to support SSO and refresh tokens.","tier":"strong"}
+{"prompt":"We need multi-tenancy with row-level isolation; propose and implement an approach.","tier":"strong"}
+{"prompt":"Redesign the job queue for at-least-once delivery with idempotency.","tier":"strong"}
+{"prompt":"Analyse why p99 latency doubled after the last deploy.","tier":"strong"}
+{"prompt":"Choose between event sourcing and CRUD for the ledger, then implement.","tier":"strong"}
+{"prompt":"Split the monolith into two services along the billing boundary.","tier":"strong"}
+{"prompt":"Implement end-to-end encryption for message storage.","tier":"strong"}
+{"prompt":"Design the schema and consistency model for collaborative editing.","tier":"strong"}
+{"prompt":"The system silently loses messages during failover; find and fix it.","tier":"strong"}
+{"prompt":"Introduce a plugin architecture for the extension system.","tier":"strong"}
+{"prompt":"Plan and execute a zero-downtime schema migration on a 500M-row table.","tier":"strong"}
+{"prompt":"Harden the permission model against privilege escalation.","tier":"strong"}
+{"prompt":"Rethink the caching strategy to avoid stale reads across regions.","tier":"strong"}
+{"prompt":"Profile and fix the CPU hotspot in the serialization layer.","tier":"strong"}
+{"prompt":"Replace the custom scheduler with a deterministic one and justify the tradeoffs.","tier":"strong"}
+{"prompt":"Design an audit trail that is tamper-evident.","tier":"strong"}
+{"prompt":"The distributed lock fails under network partitions; redesign it.","tier":"strong"}
+{"prompt":"Add a new field to the user profile form.","tier":"standard"}
+{"prompt":"The API returns 200 for a not-found resource.","tier":"standard"}
+{"prompt":"Fix the CSS overlap on mobile at 375px width.","tier":"standard"}
+{"prompt":"Add a confirmation dialog before deleting an item.","tier":"standard"}
+{"prompt":"Rename the `data` variable to something meaningful.","tier":"cheap"}
+{"prompt":"Update the changelog with the latest release notes.","tier":"cheap"}
+{"prompt":"Explain the difference between shallow and deep copy in this codebase.","tier":"cheap"}
+{"prompt":"Add unit tests for the string helpers.","tier":"standard"}
+{"prompt":"The search results ignore the selected filter.","tier":"standard"}
+{"prompt":"Implement dark mode for the settings screen.","tier":"standard"}
+{"prompt":"Refactor duplicated validation across three forms, no behaviour change.","tier":"standard"}
+{"prompt":"Why does the queue worker stop processing after an hour?","tier":"standard"}
+{"prompt":"Add retry with exponential backoff to the webhook sender.","tier":"standard"}
+{"prompt":"The number formatter rounds 0.5 down instead of up.","tier":"standard"}
+{"prompt":"Implement a feature flag for the new checkout.","tier":"standard"}
+{"prompt":"The file watcher fires twice for every save.","tier":"standard"}
+{"prompt":"Add a CLI command to export the database schema.","tier":"standard"}
+{"prompt":"Make the build reproducible across machines.","tier":"strong"}
+{"prompt":"Investigate occasional data corruption in the sync engine.","tier":"strong"}
+{"prompt":"Design rate-limit-aware batching for the third-party API.","tier":"strong"}
+{"prompt":"Ensure exactly-once processing of payments after retries.","tier":"strong"}
+{"prompt":"Rewrite the routing layer to support nested layouts.","tier":"strong"}
+{"prompt":"Reduce cold-start time of the serverless function by half.","tier":"strong"}
+{"prompt":"Design a safe rollback strategy for the migration.","tier":"strong"}
+{"prompt":"Find why memory grows unbounded during long sessions.","tier":"strong"}
+{"prompt":"Introduce contract tests between the frontend and backend.","tier":"standard"}
+{"prompt":"The internationalization fallback shows the key instead of the string.","tier":"standard"}
+{"prompt":"Add a keyboard shortcut to submit the form.","tier":"standard"}
+{"prompt":"The error message shows the stack trace instead of a friendly message.","tier":"standard"}
+{"prompt":"Explain how the dependency injection container resolves circular dependencies.","tier":"strong"}

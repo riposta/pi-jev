@@ -1,0 +1,61 @@
+{
+  "name": "pi-jev",
+  "version": "0.1.0",
+  "description": "A Jev classification layer for the Pi coding agent: typed routing, permission gating, context shielding, pruning and loop detection.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Adam Dąbrowski",
+  "keywords": [
+    "pi",
+    "pi-coding-agent",
+    "pi-package",
+    "jev",
+    "typesafe",
+    "classification",
+    "llm-routing"
+  ],
+  "pi": {
+    "extensions": [
+      "./src/index.ts"
+    ]
+  },
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./questions": "./src/questions.ts",
+    "./config": "./src/config.ts"
+  },
+  "files": [
+    "src",
+    "tools",
+    "fixtures",
+    "examples",
+    "docs",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "typecheck": "tsc --noEmit",
+    "calibrate": "node --experimental-strip-types tools/calibrate.ts",
+    "replay": "node --experimental-strip-types tools/replay.ts"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "^0.85.1",
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": ">=0.85.0"
+  },
+  "peerDependenciesMeta": {
+    "@earendil-works/pi-coding-agent": {
+      "optional": true
+    }
+  }
+}
