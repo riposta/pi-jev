@@ -281,6 +281,19 @@ calls go to the real `api.typesafe.ai` (only the LLM is scripted):
 TYPESAFE_API_KEY=... npm run test:pi:live
 ```
 
+And a fully live run with a real Anthropic-compatible model provider and the
+router live, so it verifies that the router actually switches the model:
+
+```bash
+ANTHROPIC_API_KEY=... BASE_URL=https://api.deepseek.com/anthropic \
+  TYPESAFE_API_KEY=... npm run test:pi:live-model
+```
+
+The last one was verified with `pi 0.85.1` + `deepseek-flash` → `deepseek-v4-pro`
+(a `standard` classification) + real Jev. Note that Pi does not emit a
+`model_select` event for a model set by an extension during `before_agent_start`;
+the assertion uses the model on the assistant messages instead.
+
 ## Evaluation and calibration
 
 ```bash
@@ -348,7 +361,13 @@ test/pi/        real-Pi end-to-end harness (mock model + mock Jev servers)
 ## Known limitations
 
 - The fixtures are not yet sourced from public trackers (see above).
-- `matches_intent` and `is_underspecified` are unproven; watch them in shadow.
+- `matches_intent` and `is_underspecified` are unproven; watch them in shadow. In
+  the fully live run, ordinary exploratory commands (`find`, `ls`) scored
+  `matches_intent` between 0.11 and 0.47 even though their blast radius was 0, so
+  a live `confirm` would prompt often until this is calibrated on real sessions.
+- TypeSafe has cold-start outliers: the first call after idle can take several
+  seconds, well past the router budget, and the router then fails open. Warm the
+  connection or raise `PI_JEV_ROUTER_TIMEOUT_MS` for latency-sensitive setups.
 - `watchdog` turn summaries are built locally from tool names and error lines; no
   second model call. Whether they are good enough as state is an open question.
 - Where TypeSafe processes and retains request data is not documented publicly and
