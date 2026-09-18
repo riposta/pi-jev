@@ -44,6 +44,8 @@ export interface RouterMetric {
   accuracy: number;
   confusion: Record<string, number>;
   mismatches: Array<{ prompt: string; expected: TierName; got: TierName }>;
+  /** Raw answers per fixture, for offline threshold tuning without new calls. */
+  items: Array<{ prompt: string; expected: TierName; got: TierName; answers: unknown }>;
 }
 
 export interface GateMetric {
@@ -53,6 +55,7 @@ export interface GateMetric {
   falsePositives: number;
   falsePositiveRate: number;
   confirms: number;
+  items: Array<{ command: string; label: string; outcome: string; rule: number; numbers: Record<string, number> }>;
 }
 
 export interface ShieldMetric {
@@ -61,6 +64,7 @@ export interface ShieldMetric {
   detectionRate: number;
   negatives: number;
   falsePositives: number;
+  items: Array<{ text: string; injection: boolean; replace: boolean; injectionScore: number }>;
 }
 
 export async function evaluateRouter(
@@ -68,12 +72,13 @@ export async function evaluateRouter(
   ask: AskFn,
   config: Config,
 ): Promise<RouterMetric> {
-  const metric: RouterMetric = { total: 0, correct: 0, accuracy: 0, confusion: {}, mismatches: [] };
+  const metric: RouterMetric = { total: 0, correct: 0, accuracy: 0, confusion: {}, mismatches: [], items: [] };
   for (const fixture of fixtures) {
     const result = await ask("router", { prompt: fixture.prompt, cwd_basename: "repo", recent_files: [], previous_turn: "", available_tiers: [] }, ROUTER_QUESTIONS);
     if (!result) continue;
     const decision = decideRouter(result.answers as RouterAnswers, config);
     metric.total += 1;
+    metric.items.push({ prompt: fixture.prompt, expected: fixture.tier, got: decision.tier, answers: result.answers });
     if (decision.tier === fixture.tier) metric.correct += 1;
     else metric.mismatches.push({ prompt: fixture.prompt, expected: fixture.tier, got: decision.tier });
     const key = `${fixture.tier}->${decision.tier}`;
@@ -98,6 +103,7 @@ export async function evaluateGate(
     falsePositives: 0,
     falsePositiveRate: Number.NaN,
     confirms: 0,
+    items: [],
   };
   for (const fixture of fixtures) {
     const result = await ask(
@@ -114,6 +120,7 @@ export async function evaluateGate(
     );
     if (!result) continue;
     const decision = enforceBlockPolicy(decideGate(result.answers as GateAnswers, strict), true);
+    metric.items.push({ command: fixture.command, label: fixture.label, outcome: decision.outcome, rule: decision.rule, numbers: decision.numbers });
     if (decision.outcome === "confirm") metric.confirms += 1;
     if (fixture.label === "dangerous") {
       metric.dangerous += 1;
@@ -132,11 +139,12 @@ export async function evaluateShield(
   ask: AskFn,
   config: Config,
 ): Promise<ShieldMetric> {
-  const metric: ShieldMetric = { positives: 0, detected: 0, detectionRate: Number.NaN, negatives: 0, falsePositives: 0 };
+  const metric: ShieldMetric = { positives: 0, detected: 0, detectionRate: Number.NaN, negatives: 0, falsePositives: 0, items: [] };
   for (const fixture of fixtures) {
     const result = await ask("shield_prune", { tool: "read", tool_output: fixture.text, is_error: false, cwd_basename: "repo" }, SHIELD_QUESTIONS);
     if (!result) continue;
     const decision = decideShield({ ...(result.answers as ShieldAnswers), failure_type: { type: "choice", choice: "none", probabilities: {}, confidence: 1 } }, config);
+    metric.items.push({ text: fixture.text, injection: fixture.injection, replace: decision.replace, injectionScore: decision.injection });
     if (fixture.injection) {
       metric.positives += 1;
       if (decision.replace) metric.detected += 1;

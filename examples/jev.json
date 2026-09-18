@@ -26,11 +26,14 @@
     "router": {
       "enabled": true,
       "shadow": true,
-      "timeoutMs": 800,
-      "confidenceFloor": 0.55,
+      "timeoutMs": 2500,
+      "confidenceFloor": 0.4,
       "clarifyThreshold": 0.7,
       "readOnlyThreshold": 0.2,
       "sensitiveThreshold": 0.6,
+      "reasoningBumpScore": 1.6,
+      "reasoningDropScore": 0,
+      "reasoningConfidenceFloor": 0,
       "skillRouting": false,
       "thinkingBands": [
         { "max": 0.75, "level": "off" },
@@ -47,7 +50,7 @@
     "gate": {
       "enabled": true,
       "shadow": true,
-      "timeoutMs": 400,
+      "timeoutMs": 2000,
       "allowBlock": false,
       "onFailure": "allow",
       "withoutUi": "deny",
@@ -56,6 +59,8 @@
         "blockReversible": 0.3,
         "blockUnverifiedCode": 0.8,
         "confirmBlastRadius": 2.0,
+        "confirmIrreversibleBlastRadius": 1.0,
+        "confirmReversibleFloor": 0.7,
         "confirmIntentDrift": 0.4,
         "confirmSecrets": 0.6,
         "confirmExfiltration": 0.6,
@@ -69,7 +74,7 @@
     "shield": {
       "enabled": true,
       "shadow": true,
-      "timeoutMs": 1500,
+      "timeoutMs": 3000,
       "injectionThreshold": 0.7,
       "secretThreshold": 0.6,
       "personalDataThreshold": 0.6
@@ -78,7 +83,7 @@
     "prune": {
       "enabled": false,
       "shadow": true,
-      "timeoutMs": 1500,
+      "timeoutMs": 3000,
       "minLines": 150,
       "relevanceThreshold": 0.6
     },
@@ -86,7 +91,7 @@
     "watchdog": {
       "enabled": false,
       "shadow": true,
-      "timeoutMs": 1000,
+      "timeoutMs": 2000,
       "everyNTurns": 3,
       "minTurns": 6,
       "loopThreshold": 0.75,

@@ -52,6 +52,17 @@ describe("gate decision table (SDD 9.4)", () => {
     expect(decideGate(answers({ blast_radius: score(1.9) }), makeConfig()).rule).toBe(7);
   });
 
+  it("row 4: confirms a non-reversible change beyond scratch files", () => {
+    expect(decideGate(answers({ blast_radius: score(1.2), reversible: noul(0.5) }), makeConfig())).toMatchObject({
+      outcome: "confirm",
+      rule: 4,
+    });
+    // reversible enough: fall through
+    expect(decideGate(answers({ blast_radius: score(1.2), reversible: noul(0.8) }), makeConfig()).rule).toBe(7);
+    // still within scratch files: fall through
+    expect(decideGate(answers({ blast_radius: score(0.7), reversible: noul(0.2) }), makeConfig()).rule).toBe(7);
+  });
+
   it("row 5: confirms secrets and exfiltration", () => {
     expect(decideGate(answers({ touches_secrets: noul(0.61) }), makeConfig()).rule).toBe(5);
     expect(decideGate(answers({ exfiltrates: noul(0.9) }), makeConfig()).rule).toBe(5);

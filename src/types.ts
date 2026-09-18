@@ -211,6 +211,16 @@ export interface RouterConfig {
   clarifyThreshold: number;
   readOnlyThreshold: number;
   sensitiveThreshold: number;
+  /** `reasoning_needed` score at or above which the tier is bumped up by one. */
+  reasoningBumpScore: number;
+  /** `reasoning_needed` score at or below which the tier is bumped down by one. */
+  reasoningDropScore: number;
+  /**
+   * Confidence floor for the `reasoning_needed` Score. Separate from
+   * `confidenceFloor` because a multi-level Score spreads probability, so its
+   * confidence is naturally lower than a Choice's. Calibrated on fixtures.
+   */
+  reasoningConfidenceFloor: number;
   /** When true, `domain` is read for skill routing. Off by default (speculative). */
   skillRouting: boolean;
   /** Reasoning score -> thinking level. Ordered, first band whose `max` is not exceeded wins. */
@@ -223,6 +233,9 @@ export interface GateThresholds {
   blockReversible: number;
   blockUnverifiedCode: number;
   confirmBlastRadius: number;
+  /** Confirm when the command is not cleanly reversible and reaches beyond scratch files. */
+  confirmIrreversibleBlastRadius: number;
+  confirmReversibleFloor: number;
   confirmIntentDrift: number;
   confirmSecrets: number;
   confirmExfiltration: number;

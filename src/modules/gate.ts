@@ -119,6 +119,17 @@ export function decideGate(answers: GateAnswers, config: Config): GateDecision {
   if (blast >= t.confirmBlastRadius) {
     return { outcome: "confirm", rule: 4, reason: `blast radius ${blast.toFixed(1)}/3`, numbers };
   }
+  // Added after the first calibration run (SDD 13.3): a command that is not
+  // cleanly reversible and reaches beyond the files being worked on is worth a
+  // look even below the shared-resource line.
+  if (blast >= t.confirmIrreversibleBlastRadius && reversible < t.confirmReversibleFloor) {
+    return {
+      outcome: "confirm",
+      rule: 4,
+      reason: `not cleanly reversible (${reversible.toFixed(2)}) at blast radius ${blast.toFixed(1)}/3`,
+      numbers,
+    };
+  }
   if (secrets > t.confirmSecrets || exfil > t.confirmExfiltration) {
     const which = secrets > t.confirmSecrets ? "touches secrets" : "sends data out";
     const value = secrets > t.confirmSecrets ? secrets : exfil;

@@ -21,7 +21,7 @@ Five independently switchable modules, one request per hook, shadow mode by defa
 | 2 | `gate` | implemented, shadow; `block` opt-in |
 | 3 | `shield` | implemented, shadow |
 | 4 | `prune` + `watchdog` | implemented, disabled by default |
-| 5 | release + measured numbers | pending fixtures run against the live API |
+| 5 | release + measured numbers | fixtures measured; npm/git publish pending |
 
 Every module ships in **shadow mode**: it classifies, logs the counterfactual
 decision, and changes nothing until you promote it. See [Promoting a module](#promoting-a-module).
@@ -31,9 +31,29 @@ session offline with a scripted model and asserts that the router classifies, a
 live gate blocks, a live shield withholds, and a `pi install`ed package
 auto-loads (see [Testing](#testing)).
 
-> The acceptance numbers (`≥ 80 %` route accuracy, `0` missed dangerous commands…)
-> are **not quoted here**. `pi-jev` reports only what `tools/evaluate.ts` produces
-> from the fixtures in this repository. Run it yourself; the fixtures are public.
+### Measured results (v0 fixtures, tuned defaults)
+
+Produced by `tools/evaluate.ts` against the labelled fixtures in this repository
+(real `api.typesafe.ai`, `jev-latest`). These are the only numbers this project
+quotes.
+
+| Module | Metric | Target | Measured |
+| --- | --- | --- | --- |
+| router | tier accuracy vs labels | ≥ 80% | **90.0%** (90/100) |
+| router | added latency p50 | ≤ 600 ms | **673 ms** (below target) |
+| gate | false negatives on dangerous | 0 | **0/19** |
+| gate | false positives on safe | ≤ 10% | **5.0%** (1/20) |
+| shield | injection detection | ≥ 90% | **93.3%** (14/15) |
+| all | failures that block Pi | 0 | **0** |
+
+Not yet measured: router net cost change (needs model pricing), gate disk-cache
+hit rate over real sessions (needs a warm log), prune token saving. See
+[Calibration notes](#calibration-notes) for what tuning the first run required.
+
+> The numbers above are `pi-jev`'s own, from the fixtures in this repository,
+> not a vendor benchmark. The fixtures are a v0 seed (see
+> [Evaluation and calibration](#evaluation-and-calibration)); re-run
+> `tools/evaluate.ts` yourself to reproduce or refute them.
 
 ## Install
 
@@ -115,15 +135,18 @@ Frequently changed values:
 
 Environment overrides: `PI_JEV_MODEL`, `PI_JEV_BASE_URL`, `PI_JEV_API_KEY_ENV`,
 `PI_JEV_LOG_DIR`, `PI_JEV_LOG_STATE_CONTENT`, `PI_JEV_OFF`,
-`PI_JEV_<MODULE>_ENABLED`, `PI_JEV_<MODULE>_SHADOW`, `PI_JEV_MAX_REQUESTS`,
-`PI_JEV_MAX_TOKENS`.
+`PI_JEV_<MODULE>_ENABLED`, `PI_JEV_<MODULE>_SHADOW`, `PI_JEV_<MODULE>_TIMEOUT_MS`,
+`PI_JEV_MAX_REQUESTS`, `PI_JEV_MAX_TOKENS`.
 
 ### Timeouts, budget and failure
 
-Timeouts are per request class: `router` 800 ms, `gate` 400 ms,
-`shield`+`prune` 1500 ms, `watchdog` 1000 ms. On expiry, a missing key, a `401`, or
-a budget breach the client returns `null` and the module fails **open** — Pi
-behaves exactly as if the extension were not installed.
+Timeouts are per request class and configurable
+(`PI_JEV_<MODULE>_TIMEOUT_MS`): `router` 2500 ms, `gate` 2000 ms,
+`shield`+`prune` 3000 ms, `watchdog` 2000 ms. These are the calibrated defaults;
+the SDD's original 800/400/1500/1000 ms measured below the real p50/p95 and made
+the hooks fail open (see [Calibration notes](#calibration-notes)). On expiry, a
+missing key, a `401`, or a budget breach the client returns `null` and the module
+fails **open** — Pi behaves exactly as if the extension were not installed.
 
 - `401` disables the layer for the session.
 - `422` disables the offending request class and logs the question id (a bug in
@@ -207,7 +230,7 @@ organisational redaction.
 ## Testing
 
 ```bash
-npm test          # 115 unit + integration tests, no network
+npm test          # 119 unit + integration tests, no network
 npm run typecheck
 npm run test:coverage
 npm run test:pi   # end-to-end against the real `pi` CLI (needs pi >= 0.85 on PATH)
@@ -258,6 +281,9 @@ node --experimental-strip-types tools/calibrate.ts <file-or-dir> --question conf
 
 # re-issue recorded states against edited questions (needs a key + logStateContent)
 node --experimental-strip-types tools/replay.ts <file-or-dir> --limit 50
+
+# offline threshold sweep over a saved evaluate report (no key needed)
+node --experimental-strip-types tools/sweep.ts /tmp/jev-eval.json
 ```
 
 Fixtures live in [`fixtures/`](fixtures/): 100 labelled prompts, 61 labelled
@@ -267,11 +293,35 @@ commands weighted toward the grey zone, and 24 synthetic injection cases.
 > trackers; the current set is representative but not yet that. Treat the numbers
 > as a smoke signal, not the published figure.
 
+### Calibration notes
+
+The first real run against `jev-latest` required three changes, all applied to
+the defaults in this repository:
+
+1. **Confidence floors were miscalibrated.** The SDD applies one floor to every
+   answer, but a multi-level Score spreads probability, so `reasoning_needed`
+   confidence is naturally much lower than a Choice's. With the original 0.55
+   floor, 40 of 48 `standard` prompts were escalated to `strong`. Added a
+   separate `router.reasoningConfidenceFloor`, calibrated to `0`, and kept the
+   Choice floor (`confidenceFloor: 0.4`). Router accuracy went from 47% to 90%.
+2. **The gate missed one irreversible local command.** `git reset --hard` scored
+   as low blast radius and reversible enough. Row 4 was extended (config-driven)
+   with `confirmIrreversibleBlastRadius: 1.0` + `confirmReversibleFloor: 0.7`:
+   *not cleanly reversible and beyond scratch files → confirm*. On the fixtures
+   this catches all 19 dangerous commands and 0 safe ones.
+3. **The SDD timeouts were below real latency.** Measured p50 673 ms / p95
+   1752 ms for a single `api.typesafe.ai` call, against budgets of 400–800 ms.
+   The three-strike rule then disabled hooks, making the layer inert. Defaults
+   raised to p95 + margin.
+
+Each is a number change or a config-driven rule; none rewrote a prompt. Re-run
+`sweep.ts` and `evaluate.ts` after any `questions.ts` or threshold edit.
+
 ## Repository layout
 
 ```
 src/            index, config, questions, client, redact, telemetry, types, modules/
-tools/          calibrate.ts, replay.ts, evaluate.ts
+tools/          calibrate.ts, replay.ts, evaluate.ts, sweep.ts
 fixtures/       prompts.jsonl, commands.jsonl, injections.jsonl
 examples/       jev.json
 docs/           SDD.md

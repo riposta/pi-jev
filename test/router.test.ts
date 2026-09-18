@@ -32,12 +32,25 @@ describe("router decision", () => {
   });
 
   it("drops a tier for purely mechanical reasoning without going below cheap", () => {
-    expect(decideRouter(answers({ task_type: choice("feature"), reasoning_needed: score(0.3, 0.9) }), makeConfig()).tier).toBe("cheap");
-    expect(decideRouter(answers({ task_type: choice("question"), reasoning_needed: score(0.1, 0.9) }), makeConfig()).tier).toBe("cheap");
+    expect(decideRouter(answers({ task_type: choice("feature"), reasoning_needed: score(0, 0.9) }), makeConfig()).tier).toBe("cheap");
+    expect(decideRouter(answers({ task_type: choice("question"), reasoning_needed: score(0, 0.9) }), makeConfig()).tier).toBe("cheap");
   });
 
-  it("escalates, never downgrades, on low confidence (P4)", () => {
-    const decision = decideRouter(answers({ reasoning_needed: score(1.2, 0.3) }), makeConfig());
+  it("escalates, never downgrades, on low task confidence (P4)", () => {
+    const decision = decideRouter(answers({ task_type: choice("feature", 0.3), reasoning_needed: score(1.2, 0.9) }), makeConfig());
+    expect(decision.tier).toBe("strong");
+    expect(decision.signals.low_confidence).toContain("task_type");
+  });
+
+  it("does not escalate on a diffuse Score confidence by default", () => {
+    // Calibration finding: a multi-level Score spreads probability, so its
+    // confidence is not comparable to a Choice's. The reasoning floor is 0.
+    expect(decideRouter(answers({ reasoning_needed: score(1.2, 0.3) }), makeConfig()).tier).toBe("standard");
+  });
+
+  it("escalates on low reasoning confidence when the floor is configured", () => {
+    const config = makeConfig({ modules: { router: { reasoningConfidenceFloor: 0.5 } } });
+    const decision = decideRouter(answers({ reasoning_needed: score(1.2, 0.3) }), config);
     expect(decision.tier).toBe("strong");
     expect(decision.signals.low_confidence).toContain("reasoning_needed");
   });

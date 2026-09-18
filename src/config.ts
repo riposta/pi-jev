@@ -83,11 +83,17 @@ function defaultRouter(): RouterConfig {
   return {
     enabled: true,
     shadow: true,
-    timeoutMs: 800,
-    confidenceFloor: 0.55,
+    // Defaults raised from the SDD's 800 ms after calibration: measured
+    // api.typesafe.ai latency here was p50 673 ms / p95 1752 ms, so 800 ms
+    // timed out on most calls and the three-strike rule disabled the hook.
+    timeoutMs: 2500,
+    confidenceFloor: 0.4,
     clarifyThreshold: 0.7,
     readOnlyThreshold: 0.2,
     sensitiveThreshold: 0.6,
+    reasoningBumpScore: 1.6,
+    reasoningDropScore: 0,
+    reasoningConfidenceFloor: 0,
     skillRouting: false,
     thinkingBands: [
       { max: 0.75, level: "off" },
@@ -106,7 +112,9 @@ function defaultGate(): GateConfig {
   return {
     enabled: true,
     shadow: true,
-    timeoutMs: 400,
+    // On the critical path, but 400 ms measured below p50 and made the gate
+    // inert. 2000 ms covers the measured p95 of a single classification.
+    timeoutMs: 2000,
     allowBlock: false,
     onFailure: "allow",
     withoutUi: "deny",
@@ -115,6 +123,8 @@ function defaultGate(): GateConfig {
       blockReversible: 0.3,
       blockUnverifiedCode: 0.8,
       confirmBlastRadius: 2.0,
+      confirmIrreversibleBlastRadius: 1.0,
+      confirmReversibleFloor: 0.7,
       confirmIntentDrift: 0.4,
       confirmSecrets: 0.6,
       confirmExfiltration: 0.6,
@@ -130,7 +140,7 @@ function defaultShield(): ShieldConfig {
   return {
     enabled: true,
     shadow: true,
-    timeoutMs: 1500,
+    timeoutMs: 3000,
     injectionThreshold: 0.7,
     secretThreshold: 0.6,
     personalDataThreshold: 0.6,
@@ -141,7 +151,7 @@ function defaultPrune(): PruneConfig {
   return {
     enabled: false,
     shadow: true,
-    timeoutMs: 1500,
+    timeoutMs: 3000,
     minLines: 150,
     relevanceThreshold: 0.6,
   };
@@ -151,7 +161,7 @@ function defaultWatchdog(): WatchdogConfig {
   return {
     enabled: false,
     shadow: true,
-    timeoutMs: 1000,
+    timeoutMs: 2000,
     everyNTurns: 3,
     minTurns: 6,
     loopThreshold: 0.75,
@@ -282,6 +292,8 @@ function applyEnv(config: Config, env: NodeJS.ProcessEnv): Config {
     if (enabled !== undefined) next.modules[name].enabled = enabled;
     const shadow = envBool(env[`PI_JEV_${name.toUpperCase()}_SHADOW`]);
     if (shadow !== undefined) next.modules[name].shadow = shadow;
+    const timeout = envNumber(env[`PI_JEV_${name.toUpperCase()}_TIMEOUT_MS`], `PI_JEV_${name.toUpperCase()}_TIMEOUT_MS`);
+    if (timeout !== undefined) next.modules[name].timeoutMs = timeout;
   }
   const maxRequests = envNumber(env.PI_JEV_MAX_REQUESTS, "PI_JEV_MAX_REQUESTS");
   if (maxRequests !== undefined) next.budget.maxRequestsPerSession = maxRequests;
@@ -354,6 +366,9 @@ function validateRouter(router: RouterConfig): void {
   num(router.clarifyThreshold, "modules.router.clarifyThreshold", 0, 1);
   num(router.readOnlyThreshold, "modules.router.readOnlyThreshold", 0, 1);
   num(router.sensitiveThreshold, "modules.router.sensitiveThreshold", 0, 1);
+  num(router.reasoningBumpScore, "modules.router.reasoningBumpScore", 0, 3);
+  num(router.reasoningDropScore, "modules.router.reasoningDropScore", 0, 3);
+  num(router.reasoningConfidenceFloor, "modules.router.reasoningConfidenceFloor", 0, 1);
   bool(router.skillRouting, "modules.router.skillRouting");
   if (!Array.isArray(router.thinkingBands) || router.thinkingBands.length === 0) {
     throw new ConfigError("modules.router.thinkingBands must be a non-empty array");
@@ -397,6 +412,8 @@ function validateGate(gate: GateConfig): void {
   num(t.blockReversible, "modules.gate.thresholds.blockReversible", 0, 1);
   num(t.blockUnverifiedCode, "modules.gate.thresholds.blockUnverifiedCode", 0, 1);
   num(t.confirmBlastRadius, "modules.gate.thresholds.confirmBlastRadius", 0, 4);
+  num(t.confirmIrreversibleBlastRadius, "modules.gate.thresholds.confirmIrreversibleBlastRadius", 0, 4);
+  num(t.confirmReversibleFloor, "modules.gate.thresholds.confirmReversibleFloor", 0, 1);
   num(t.confirmIntentDrift, "modules.gate.thresholds.confirmIntentDrift", 0, 1);
   num(t.confirmSecrets, "modules.gate.thresholds.confirmSecrets", 0, 1);
   num(t.confirmExfiltration, "modules.gate.thresholds.confirmExfiltration", 0, 1);

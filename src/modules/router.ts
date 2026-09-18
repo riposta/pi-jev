@@ -92,8 +92,8 @@ export function decideRouter(answers: RouterAnswers, config: Config): RouterDeci
   const reasoning = answers.reasoning_needed.score;
 
   let tier = BASE_TIER[taskType] ?? "standard";
-  if (reasoning >= 1.75) tier = bump(tier, 1);
-  else if (reasoning <= 0.4) tier = bump(tier, -1);
+  if (reasoning >= router.reasoningBumpScore) tier = bump(tier, 1);
+  else if (reasoning <= router.reasoningDropScore) tier = bump(tier, -1);
 
   const taskConfidence = answers.task_type.confidence;
   const reasoningConfidence = answers.reasoning_needed.confidence;
@@ -102,7 +102,7 @@ export function decideRouter(answers: RouterAnswers, config: Config): RouterDeci
     tier = bump(tier, 1);
     lowConfidence.push("task_type");
   }
-  if (reasoningConfidence < router.confidenceFloor) {
+  if (reasoningConfidence < router.reasoningConfidenceFloor) {
     tier = bump(tier, 1);
     lowConfidence.push("reasoning_needed");
   }

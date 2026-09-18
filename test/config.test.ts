@@ -136,7 +136,18 @@ describe("config validation", () => {
 describe("derived config", () => {
   it("shares the larger timeout between shield and prune", () => {
     const config = loadConfig({ cwd: CWD, homeDir: HOME, env: {}, readFile: () => undefined });
-    expect(timeouts(config).shield_prune).toBe(1500);
+    expect(timeouts(config).shield_prune).toBe(3000);
+  });
+
+  it("lets the environment override a per-module timeout", () => {
+    const config = loadConfig({
+      cwd: CWD,
+      homeDir: HOME,
+      env: { PI_JEV_GATE_TIMEOUT_MS: "1234" },
+      readFile: () => undefined,
+    });
+    expect(config.modules.gate.timeoutMs).toBe(1234);
+    expect(timeouts(config).gate).toBe(1234);
   });
 
   it("resolves the default allowlist and a custom one", () => {
