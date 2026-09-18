@@ -124,7 +124,7 @@ function defaultGate(): GateConfig {
       blockUnverifiedCode: 0.8,
       confirmBlastRadius: 2.0,
       confirmIrreversibleBlastRadius: 1.0,
-      confirmReversibleFloor: 0.7,
+      confirmReversibleFloor: 0.75,
       confirmDriftBlastRadius: 1.0,
       confirmRegenerableThreshold: 0.6,
       confirmIntentDrift: 0.4,

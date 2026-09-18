@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { sweepGate } from "../tools/calibrate.ts";
 import { summariseLabels } from "../tools/labels.ts";
+import { scoreLabels, type LabelledDecision } from "../tools/score-labels.ts";
 import { diffAnswers, replay } from "../tools/replay.ts";
 import { evaluateGate, evaluateRouter, evaluateShield } from "../tools/evaluate.ts";
 import { makeConfig, noul, score } from "./helpers.ts";
@@ -188,6 +189,36 @@ describe("label summary", () => {
 
   it("returns NaN deny rate with no labels", () => {
     expect(Number.isNaN(summariseLabels([]).denyRate)).toBe(true);
+  });
+});
+
+describe("score labels", () => {
+  const item = (label: "safe" | "confirm" | "dangerous", answers: Record<string, unknown>): LabelledDecision =>
+    ({ command: label, label, answers: answers as never }) as LabelledDecision;
+  const base = {
+    blast_radius: score(1.2),
+    reversible: noul(0.5),
+    regenerable: noul(0.1),
+    matches_intent: noul(0.9),
+    touches_secrets: noul(0.1),
+    exfiltrates: noul(0.1),
+    unverified_code: noul(0.1),
+  };
+
+  it("separates false positives from missed confirms", () => {
+    const result = scoreLabels(
+      [
+        item("safe", { ...base, blast_radius: score(0.1), reversible: noul(0.9) }),
+        item("confirm", base),
+        item("confirm", { ...base, reversible: noul(0.9) }),
+        item("safe", base),
+      ],
+      makeConfig(),
+    );
+    expect(result.confirms).toBe(2);
+    expect(result.falsePositives).toHaveLength(1);
+    expect(result.missedConfirms).toHaveLength(1);
+    expect(result.confirmPrecision).toBeCloseTo(0.5, 5);
   });
 });
 

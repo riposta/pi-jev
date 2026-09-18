@@ -52,6 +52,7 @@
     "typecheck": "tsc --noEmit",
     "calibrate": "node --experimental-strip-types tools/calibrate.ts",
     "labels": "node --experimental-strip-types tools/labels.ts",
+    "score": "node --experimental-strip-types tools/score-labels.ts fixtures/gate-real.jsonl",
     "replay": "node --experimental-strip-types tools/replay.ts",
     "evaluate": "node --experimental-strip-types tools/evaluate.ts"
   },

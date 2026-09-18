@@ -70,8 +70,9 @@ describe("gate decision table (SDD 9.4)", () => {
       outcome: "confirm",
       rule: 4,
     });
-    // reversible enough: fall through
-    expect(decideGate(answers({ blast_radius: score(1.2), reversible: noul(0.8) }), makeConfig()).rule).toBe(7);
+    // boundary around the 0.75 floor
+    expect(decideGate(answers({ blast_radius: score(1.2), reversible: noul(0.74) }), makeConfig()).rule).toBe(4);
+    expect(decideGate(answers({ blast_radius: score(1.2), reversible: noul(0.76) }), makeConfig()).rule).toBe(7);
     // still within scratch files: fall through
     expect(decideGate(answers({ blast_radius: score(0.7), reversible: noul(0.2) }), makeConfig()).rule).toBe(7);
   });

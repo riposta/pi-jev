@@ -39,7 +39,7 @@ quotes.
 
 | Module | Metric | Target | Measured |
 | --- | --- | --- | --- |
-| router | tier accuracy vs labels | ≥ 80% | **90.0%** (90/100) |
+| router | tier accuracy vs labels | ≥ 80% | **91.0%** (91/100, 90–91% across runs) |
 | router | added latency p50 | ≤ 600 ms | **288–673 ms** (load-dependent) |
 | gate | false negatives on dangerous | 0 | **0/19** |
 | gate | false positives on safe | ≤ 10% | **5.0%** (1/20) |
@@ -330,14 +330,18 @@ node --experimental-strip-types tools/replay.ts <file-or-dir> --limit 50
 
 # offline threshold sweep over a saved evaluate report (no key needed)
 node --experimental-strip-types tools/sweep.ts /tmp/jev-eval.json
+
+# offline: score the gate against expert labels and sweep a threshold
+node --experimental-strip-types tools/score-labels.ts fixtures/gate-real.jsonl
 ```
 
 Fixtures live in [`fixtures/`](fixtures/): 100 labelled prompts, 61 labelled
-commands weighted toward the grey zone, and 24 synthetic injection cases.
+commands weighted toward the grey zone, 24 synthetic injection cases, and 141
+real commands labelled by the maintainer agent with the answers Jev produced.
 
-> These fixtures are a v0 seed. The SDD calls for prompts drawn from public issue
-> trackers; the current set is representative but not yet that. Treat the numbers
-> as a smoke signal, not the published figure.
+> The fixture sets are a v0 seed except `gate-real.jsonl`. The SDD calls for
+> prompts drawn from public issue trackers; that sourcing is still pending. Treat
+> the numbers as a smoke signal, not the published figure.
 
 ### Calibration notes
 
@@ -382,6 +386,16 @@ the defaults in this repository:
    four build/repack confirms suppressed and every destructive/secret confirm
    kept. This is an addition to the SDD 9.3 question list, made per SDD 7.2
    (split an ambiguous judgment into atomic questions); acceptance was unchanged.
+7. **Expert labels over the real commands.** The 141 captured commands were
+   labelled `safe`/`confirm`/`dangerous` and stored with Jev's answers as
+   [`fixtures/gate-real.jsonl`](fixtures/gate-real.jsonl). At the previous floor
+   the gate had 2 false positives (both `rm -rf` in a scratch dir, flagged by the
+   uncertainty rule) and 5 missed confirms. With `regenerable` in place the
+   reversibility floor could rise from 0.70 to **0.75**, catching
+   `git reset --hard origin/main` without re-flagging builds: precision 86.7%,
+   recall 76.5%, false positives 2/124 (1.6%), zero missed dangerous. The four
+   remaining missed confirms (`ssh`, `sudo`, global installs) are privilege /
+   supply-chain concerns that need a future question, not a threshold.
 
 Each is a number change or a config-driven rule; none rewrote a prompt. Re-run
 `sweep.ts` and `evaluate.ts` after any `questions.ts` or threshold edit.
@@ -390,7 +404,7 @@ Each is a number change or a config-driven rule; none rewrote a prompt. Re-run
 
 ```
 src/            index, config, questions, client, redact, telemetry, types, modules/
-tools/          calibrate.ts, replay.ts, evaluate.ts, sweep.ts, labels.ts
+tools/          calibrate.ts, replay.ts, evaluate.ts, sweep.ts, labels.ts, score-labels.ts
 fixtures/       prompts.jsonl, commands.jsonl, injections.jsonl
 examples/       jev.json
 docs/           SDD.md, calibration.md
