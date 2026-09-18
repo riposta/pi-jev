@@ -188,6 +188,28 @@ For the gate specifically: `confirm` first; leave `allowBlock: false` until the
 log shows zero false negatives on `fixtures/commands.jsonl` and the disk-cache hit
 rate clears 50 %.
 
+### Collecting real labels
+
+Every confirm answer is a supervised label. The gate's `userChoice` records it
+alongside the full probability vector for free. To collect them, make `confirm`
+live (block stays off) and use Pi normally. Put this in `~/.pi/agent/jev.json`:
+
+```jsonc
+{ "modules": { "gate": { "enabled": true, "shadow": false, "allowBlock": false } } }
+```
+
+Then, in a project where you have been working:
+
+```bash
+node --experimental-strip-types tools/labels.ts .pi/jev-log
+node --experimental-strip-types tools/labels.ts .pi/jev-log --sweep confirmBlastRadius --from 1 --to 3 --step 0.25
+```
+
+`labels` prints allow/deny totals, the deny rate per decision-table rule and the
+commands you denied. With `--sweep` it replays the recorded answers and shows how
+the deny rate moves as a threshold changes. Target 300+ gate decisions before
+touching the numbers (SDD 13.3). Nothing is blocked while `allowBlock` is false.
+
 ## Commands
 
 | Command | Does |
@@ -368,7 +390,7 @@ Each is a number change or a config-driven rule; none rewrote a prompt. Re-run
 
 ```
 src/            index, config, questions, client, redact, telemetry, types, modules/
-tools/          calibrate.ts, replay.ts, evaluate.ts, sweep.ts
+tools/          calibrate.ts, replay.ts, evaluate.ts, sweep.ts, labels.ts
 fixtures/       prompts.jsonl, commands.jsonl, injections.jsonl
 examples/       jev.json
 docs/           SDD.md, calibration.md

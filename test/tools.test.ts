@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { sweepGate } from "../tools/calibrate.ts";
+import { summariseLabels } from "../tools/labels.ts";
 import { diffAnswers, replay } from "../tools/replay.ts";
 import { evaluateGate, evaluateRouter, evaluateShield } from "../tools/evaluate.ts";
 import { makeConfig, noul, score } from "./helpers.ts";
@@ -158,6 +159,35 @@ describe("evaluate fixtures", () => {
     );
     expect(metric.detectionRate).toBe(1);
     expect(metric.falsePositives).toBe(0);
+  });
+});
+
+describe("label summary", () => {
+  const gate = (userChoice: "allow" | "deny" | "unknown", rule: number, command = "cmd") =>
+    ({
+      hook: "gate" as const,
+      questionsVersion: "v",
+      stateHash: "s",
+      decision: "confirm",
+      shadow: false,
+      userChoice,
+      detail: { rule, command },
+    }) as unknown as TelemetryRecord;
+
+  it("counts allow/deny, deny rate and per-rule buckets", () => {
+    const summary = summariseLabels([gate("deny", 4), gate("allow", 4), gate("allow", 5), gate("unknown", 4)]);
+    expect(summary.labelled).toBe(3);
+    expect(summary.allow).toBe(2);
+    expect(summary.deny).toBe(1);
+    expect(summary.unknown).toBe(1);
+    expect(summary.denyRate).toBeCloseTo(1 / 3, 5);
+    expect(summary.byRule.r4).toMatchObject({ allow: 1, deny: 1 });
+    expect(summary.byRule.r5).toMatchObject({ allow: 1, deny: 0 });
+    expect(summary.deniedCommands).toEqual(["cmd"]);
+  });
+
+  it("returns NaN deny rate with no labels", () => {
+    expect(Number.isNaN(summariseLabels([]).denyRate)).toBe(true);
   });
 });
 

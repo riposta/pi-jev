@@ -148,3 +148,17 @@ working-file operations, which rule 4 deliberately allows; the risky axis is
 `block` rows fired. The SDD's 300+ target for promoting `confirm` is not met; the
 next step is labelled data, which is why the gate stays in shadow.
 
+## Collecting labels for the next pass
+
+Everything above is unlabelled shadow data. To get human labels, make `confirm`
+live — `modules.gate.shadow: false` with `allowBlock` still `false` — and use Pi
+normally. Each answer is recorded as `userChoice`. Then:
+
+```bash
+node --experimental-strip-types tools/labels.ts .pi/jev-log
+node --experimental-strip-types tools/labels.ts .pi/jev-log --sweep confirmReversibleFloor --from 0.5 --to 0.8 --step 0.05
+```
+
+This is the supervised set the calibration is waiting for.
+
+

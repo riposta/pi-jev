@@ -51,6 +51,7 @@
     "test:all": "vitest run && node test/pi/run-e2e.mjs",
     "typecheck": "tsc --noEmit",
     "calibrate": "node --experimental-strip-types tools/calibrate.ts",
+    "labels": "node --experimental-strip-types tools/labels.ts",
     "replay": "node --experimental-strip-types tools/replay.ts",
     "evaluate": "node --experimental-strip-types tools/evaluate.ts"
   },
