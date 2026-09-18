@@ -1,6 +1,6 @@
 name: Publish to npm
 
-# Publishes the package when a version tag is pushed (e.g. v0.1.0), or on
+# Publishes the package when a version tag is pushed (e.g. v0.1.1), or on
 # demand from the Actions tab.
 on:
   push:
@@ -30,9 +30,11 @@ jobs:
           registry-url: "https://registry.npmjs.org"
           cache: npm
 
-      # Trusted Publishing needs npm >= 11.5.1; Node 22.19 ships npm 10.x.
+      # Trusted Publishing needs npm >= 11.5.1. Node 22.19 ships npm 10.x, and
+      # npm@latest is npm 12.x, which refuses to run on Node < 22.22.2, so pin
+      # to npm 11 (engines: ^20.17.0 || >=22.9.0).
       - name: Upgrade npm for OIDC publishing
-        run: npm install -g npm@latest
+        run: npm install -g "npm@^11.5.1"
 
       - run: npm ci
       - run: npm run typecheck
@@ -48,7 +50,21 @@ jobs:
             exit 1
           fi
 
+      # Keeps workflow_dispatch and re-runs idempotent: a version already on
+      # npm is skipped instead of failing with EPUBLISHCONFLICT.
+      - name: Check whether this version is already published
+        id: version
+        run: |
+          current="$(node -p "require('./package.json').version")"
+          if npm view "@riposta/pi-jev@$current" version >/dev/null 2>&1; then
+            echo "published=true" >> "$GITHUB_OUTPUT"
+            echo "@riposta/pi-jev@$current is already on npm; skipping publish."
+          else
+            echo "published=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Publish
+        if: steps.version.outputs.published != 'true'
         run: npm publish
         # Trusted Publishing: npm exchanges the GitHub OIDC token automatically,
         # so no NODE_AUTH_TOKEN is set.
