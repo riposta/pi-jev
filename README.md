@@ -61,7 +61,7 @@ Requires Pi `>= 0.85.0` (Node `>= 22.19`), matching Pi's own engine requirement.
 
 ```bash
 # from git
-pi install git:github.com/<org>/pi-jev
+pi install git:github.com/riposta/pi-jev
 
 # or from npm
 pi install npm:pi-jev

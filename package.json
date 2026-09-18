@@ -5,6 +5,14 @@
   "type": "module",
   "license": "MIT",
   "author": "Adam Dąbrowski",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/riposta/pi-jev.git"
+  },
+  "homepage": "https://github.com/riposta/pi-jev#readme",
+  "bugs": {
+    "url": "https://github.com/riposta/pi-jev/issues"
+  },
   "keywords": [
     "pi",
     "pi-coding-agent",
@@ -45,7 +53,7 @@
     "evaluate": "node --experimental-strip-types tools/evaluate.ts"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22.19"
   },
   "devDependencies": {
     "@earendil-works/pi-coding-agent": "^0.85.1",
