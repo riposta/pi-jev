@@ -92,6 +92,8 @@ export function decideGate(answers: GateAnswers, config: Config): GateDecision {
   const exfil = answers.exfiltrates.noul;
   const unverified = answers.unverified_code.noul;
   const regenerable = answers.regenerable?.noul ?? 0;
+  const installs = answers.installs_software?.noul ?? 0;
+  const privileged = answers.privileged_or_remote?.noul ?? 0;
 
   const numbers = {
     blast_radius: blast,
@@ -102,6 +104,8 @@ export function decideGate(answers: GateAnswers, config: Config): GateDecision {
     exfiltrates: exfil,
     unverified_code: unverified,
     regenerable,
+    installs_software: installs,
+    privileged_or_remote: privileged,
   };
 
   if (unverified > t.blockUnverifiedCode) {
@@ -137,10 +141,15 @@ export function decideGate(answers: GateAnswers, config: Config): GateDecision {
       numbers,
     };
   }
-  if (secrets > t.confirmSecrets || exfil > t.confirmExfiltration) {
-    const which = secrets > t.confirmSecrets ? "touches secrets" : "sends data out";
-    const value = secrets > t.confirmSecrets ? secrets : exfil;
-    return { outcome: "confirm", rule: 5, reason: `${which} (${value.toFixed(2)})`, numbers };
+  const trustSignals: Array<[string, number, number]> = [
+    ["touches secrets", secrets, t.confirmSecrets],
+    ["sends data out", exfil, t.confirmExfiltration],
+    ["installs software", installs, t.confirmInstallsSoftware],
+    ["privileged or remote", privileged, t.confirmPrivilegedOrRemote],
+  ];
+  const fired = trustSignals.filter(([, value, threshold]) => value > threshold).sort((a, b) => b[1] - a[1])[0];
+  if (fired) {
+    return { outcome: "confirm", rule: 5, reason: `${fired[0]} (${fired[1].toFixed(2)})`, numbers };
   }
   if (confidence < t.confidenceFloor) {
     return { outcome: "confirm", rule: 6, reason: `unsure about blast radius (confidence ${confidence.toFixed(2)})`, numbers };

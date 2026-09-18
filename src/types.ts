@@ -240,6 +240,10 @@ export interface GateThresholds {
   confirmDriftBlastRadius: number;
   /** A command that only refreshes regenerable artefacts never triggers the irreversible confirm. */
   confirmRegenerableThreshold: number;
+  /** Confirm when the command installs software from a registry. */
+  confirmInstallsSoftware: number;
+  /** Confirm when the command escalates privileges or executes on a remote host. */
+  confirmPrivilegedOrRemote: number;
   confirmIntentDrift: number;
   confirmSecrets: number;
   confirmExfiltration: number;

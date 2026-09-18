@@ -17,6 +17,8 @@ function answers(patch: Partial<GateAnswers> = {}): GateAnswers {
     blast_radius: score(0.5, 0.9),
     reversible: noul(0.9),
     regenerable: noul(0.1),
+    installs_software: noul(0.05),
+    privileged_or_remote: noul(0.05),
     touches_secrets: noul(0.1),
     matches_intent: noul(0.9),
     exfiltrates: noul(0.1),
@@ -90,6 +92,17 @@ describe("gate decision table (SDD 9.4)", () => {
 
   it("row 7: allows everything within thresholds", () => {
     expect(decideGate(answers(), makeConfig())).toMatchObject({ outcome: "allow", rule: 7 });
+  });
+
+  it("row 5: confirms installs and privileged or remote commands", () => {
+    expect(decideGate(answers({ installs_software: noul(0.99) }), makeConfig())).toMatchObject({ outcome: "confirm", rule: 5 });
+    expect(decideGate(answers({ privileged_or_remote: noul(0.9) }), makeConfig())).toMatchObject({ outcome: "confirm", rule: 5 });
+    expect(decideGate(answers({ installs_software: noul(0.6) }), makeConfig()).rule).toBe(7);
+  });
+
+  it("row 5: names the strongest signal that fired", () => {
+    const decision = decideGate(answers({ privileged_or_remote: noul(0.95), installs_software: noul(0.7) }), makeConfig());
+    expect(decision.reason).toContain("privileged or remote");
   });
 
   it("takes the first matching row", () => {

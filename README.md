@@ -39,7 +39,7 @@ quotes.
 
 | Module | Metric | Target | Measured |
 | --- | --- | --- | --- |
-| router | tier accuracy vs labels | ≥ 80% | **91.0%** (91/100, 90–91% across runs) |
+| router | tier accuracy vs labels | ≥ 80% | **90–92%** across runs |
 | router | added latency p50 | ≤ 600 ms | **288–673 ms** (load-dependent) |
 | gate | false negatives on dangerous | 0 | **0/19** |
 | gate | false positives on safe | ≤ 10% | **5.0%** (1/20) |
@@ -162,7 +162,7 @@ When the gate is live and non-shadow, a classification failure falls back to
 | Module | Hook | Default | What it does |
 | --- | --- | --- | --- |
 | `router` | `before_agent_start` | enabled, shadow | picks a model tier, thinking level and tool loadout; nudges on underspecification |
-| `gate` | `tool_call` | enabled, shadow | allow / confirm / block based on blast radius, reversibility, regenerable artefacts, intent drift, secrets, exfiltration, unverified code |
+| `gate` | `tool_call` | enabled, shadow | allow / confirm / block based on blast radius, reversibility, regenerable artefacts, intent drift, secrets, exfiltration, unverified code, installs and privilege/remote execution |
 | `shield` | `tool_result` | enabled, shadow | withholds prompt-injected output, masks secrets and personal data |
 | `prune` | `tool_result` | disabled | replaces low-relevance output with a summary and a temp-file pointer |
 | `watchdog` | `turn_end` | disabled | detects looping and unverified completion; injects advice, never aborts |
@@ -394,8 +394,11 @@ the defaults in this repository:
    reversibility floor could rise from 0.70 to **0.75**, catching
    `git reset --hard origin/main` without re-flagging builds: precision 86.7%,
    recall 76.5%, false positives 2/124 (1.6%), zero missed dangerous. The four
-   remaining missed confirms (`ssh`, `sudo`, global installs) are privilege /
-   supply-chain concerns that need a future question, not a threshold.
+   remaining missed confirms (`ssh`, `sudo`, global installs) needed two more
+   questions, not a threshold: `installs_software` and `privileged_or_remote`
+   measured 0.99 and 0.98/0.89 with no safe command above 0.22/0.05, lifting
+   recall to 100% at 89.5% precision. The gate now asks nine questions where SDD
+   9.3 listed six, each addition forced by labelled evidence.
 
 Each is a number change or a config-driven rule; none rewrote a prompt. Re-run
 `sweep.ts` and `evaluate.ts` after any `questions.ts` or threshold edit.

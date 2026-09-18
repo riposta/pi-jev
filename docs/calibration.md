@@ -210,5 +210,41 @@ forced into a threshold.
 **Acceptance re-run** with the new floor: router 91.0% (91/100), gate 0/19 false
 negatives, 5.0% (1/20) false positives, shield 93.3%.
 
+## 2026-09-18 — installs / privilege / remote questions
+
+The four missed confirms above (`ssh`, `sudo`, `npm install -g`, `pip3 install`)
+were low blast radius and reversible, so no threshold could catch them. They are
+supply-chain and privilege concerns, so they needed questions. Candidate shapes
+were probed against all 141 recorded commands before choosing:
+
+| candidate | npm/pip | ssh | sudo | safe commands > 0.5 |
+| --- | --- | --- | --- | --- |
+| composite `external_trust` | — | — | — | 34 (rejected: flagged `--version`) |
+| `installs_software` | 0.99 | — | — | 0 (max 0.22) |
+| `privileged_or_remote` | — | 0.89 | 0.98 | 0 (max 0.05) |
+
+Two atomic questions won over one composite, per SDD 7.2. Added
+`installs_software` and `privileged_or_remote` (Noul) with
+`confirmInstallsSoftware` and `confirmPrivilegedOrRemote` at 0.6, wired into the
+row 5 trust condition alongside secrets and exfiltration.
+
+Re-scoring `fixtures/gate-real.jsonl` (now carrying the new answers too):
+
+| | before | after |
+| --- | --- | --- |
+| confirm recall | 76.5% | **100%** (17/17) |
+| confirm precision | 86.7% | 89.5% |
+| false positives (safe) | 2/124 | 2/124 |
+| missed dangerous | 0 | 0 |
+
+**Acceptance re-run:** router 92.0% (92/100), gate 0/19 false negatives, 5.0%
+(1/20) false positives, shield 93.3%.
+
+The gate now asks nine questions where SDD 9.3 listed six. Each addition was
+forced by labelled evidence that no threshold could express the distinction, and
+each is recorded here; the cost is three more questions' tokens on every gate
+request.
+
+
 
 
