@@ -57,7 +57,38 @@ hit rate over real sessions (needs a warm log), prune token saving. See
 
 ## Install
 
-Requires Pi `>= 0.85.0` (Node `>= 22.19`), matching Pi's own engine requirement.
+`pi-jev` is a [Pi](https://pi.dev) extension, so Pi comes first.
+
+### 1. Install Pi
+
+Pi requires **Node `>= 22.19`**.
+
+```bash
+# installer (recommended)
+curl -fsSL https://pi.dev/install.sh | sh
+
+# or npm
+npm install -g --ignore-scripts @earendil-works/pi-coding-agent
+```
+
+Verify with `pi --version`. Pi also needs its own model provider — an API key
+(for example `ANTHROPIC_API_KEY`) or `/login` inside Pi. That is separate from
+the TypeSafe key `pi-jev` uses. See the [Pi docs](https://pi.dev/docs/latest).
+
+### 2. Set the TypeSafe API key
+
+`pi-jev` reads the key from the environment of the process that starts Pi:
+
+```bash
+export TYPESAFE_API_KEY=...
+```
+
+The variable name is configurable (`apiKeyEnv`), and there is no phone-home: the
+key is only used for requests to `api.typesafe.ai`.
+
+### 3. Install pi-jev
+
+Pi `>= 0.85.0` is required.
 
 ```bash
 # from git
@@ -70,17 +101,15 @@ pi install npm:pi-jev
 For local development, run Pi with the extension directly:
 
 ```bash
+npm install
 pi -e ./src/index.ts
 
 # or install this checkout as a package (no publish needed)
 pi install /absolute/path/to/pi-jev
 ```
 
-Set the API key before starting Pi:
-
-```bash
-export TYPESAFE_API_KEY=...
-```
+Every module starts in shadow mode, so installing it changes nothing until you
+promote one (see [Promoting a module](#promoting-a-module)).
 
 `pi-jev` sends metadata and sampled tool output to `api.typesafe.ai`. Read
 [Privacy](#privacy) before enabling it on a repository you care about.
