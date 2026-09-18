@@ -26,6 +26,11 @@ Five independently switchable modules, one request per hook, shadow mode by defa
 Every module ships in **shadow mode**: it classifies, logs the counterfactual
 decision, and changes nothing until you promote it. See [Promoting a module](#promoting-a-module).
 
+Verified end-to-end against Pi `0.85.1`: `test/pi/run-e2e.mjs` drives a real `pi`
+session offline with a scripted model and asserts that the router classifies, a
+live gate blocks, a live shield withholds, and a `pi install`ed package
+auto-loads (see [Testing](#testing)).
+
 > The acceptance numbers (`≥ 80 %` route accuracy, `0` missed dangerous commands…)
 > are **not quoted here**. `pi-jev` reports only what `tools/evaluate.ts` produces
 > from the fixtures in this repository. Run it yourself; the fixtures are public.
@@ -46,6 +51,9 @@ For local development, run Pi with the extension directly:
 
 ```bash
 pi -e ./src/index.ts
+
+# or install this checkout as a package (no publish needed)
+pi install /absolute/path/to/pi-jev
 ```
 
 Set the API key before starting Pi:
@@ -199,9 +207,10 @@ organisational redaction.
 ## Testing
 
 ```bash
-npm test          # 110 unit + integration tests, no network
+npm test          # 115 unit + integration tests, no network
 npm run typecheck
 npm run test:coverage
+npm run test:pi   # end-to-end against the real `pi` CLI (needs pi >= 0.85 on PATH)
 ```
 
 The client and the shell wiring are tested against a **real local HTTP server**
@@ -211,6 +220,26 @@ budget breach and redaction. Decision tables (including boundaries) are tested
 with stubbed answers. `test/index.test.ts` embeds a fake Pi harness and asserts
 real hook effects: model switched, tool call confirmed/blocked, result content
 replaced.
+
+### End-to-end against real Pi
+
+`test/pi/run-e2e.mjs` runs the actual `pi` binary offline against two local
+mocks — an OpenAI-compatible model server and a TypeSafe `/v1/systemone` server —
+with a scripted model. It verifies, twice:
+
+1. **dev load** (`pi -e ./src/index.ts`): router classifies the prompt, a live
+   `gate` blocks `git push --force` because there is no UI to confirm, and a live
+   `shield` replaces injected `read` output with the withheld notice.
+2. **package install** (`pi install /absolute/path/to/pi-jev`, then a normal run
+   with no `-e`): the installed plugin auto-loads from settings and classifies.
+
+```bash
+npm run test:pi
+# KEEP_TMP=1 npm run test:pi   # keep the temp workspace for inspection
+```
+
+Requires Pi's own engine: Node `>= 22.19`. Set `PI_BIN` to point at a specific
+`pi` binary.
 
 A live smoke test runs only when `TYPESAFE_API_KEY` is set:
 
@@ -247,6 +276,7 @@ fixtures/       prompts.jsonl, commands.jsonl, injections.jsonl
 examples/       jev.json
 docs/           SDD.md
 test/           unit, client integration, and index wiring tests
+test/pi/        real-Pi end-to-end harness (mock model + mock Jev servers)
 ```
 
 ## Known limitations

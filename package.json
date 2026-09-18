@@ -37,9 +37,12 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
+    "test:pi": "node test/pi/run-e2e.mjs",
+    "test:all": "vitest run && node test/pi/run-e2e.mjs",
     "typecheck": "tsc --noEmit",
     "calibrate": "node --experimental-strip-types tools/calibrate.ts",
-    "replay": "node --experimental-strip-types tools/replay.ts"
+    "replay": "node --experimental-strip-types tools/replay.ts",
+    "evaluate": "node --experimental-strip-types tools/evaluate.ts"
   },
   "engines": {
     "node": ">=20"
@@ -51,7 +54,7 @@
     "vitest": "^2.1.0"
   },
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": ">=0.85.0"
+    "@earendil-works/pi-coding-agent": "*"
   },
   "peerDependenciesMeta": {
     "@earendil-works/pi-coding-agent": {
