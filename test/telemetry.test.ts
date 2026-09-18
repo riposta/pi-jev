@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mkdtempSync, readFileSync, readdirSync } from "node:fs";
+import { mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -90,12 +90,23 @@ describe("createTelemetry", () => {
     telemetry.log({ hook: "router", questionsVersion: "v", stateHash: "s", decision: "cheap", shadow: true });
     const records = readLog({ dir, readdir: () => readdirSync(dir), readFile: (p) => readFileSync(p, "utf8") });
     expect(records).toHaveLength(2);
+    // Real filesystem defaults, so `/jev stats` (which passes only a dir) works.
+    expect(readLog({ dir })).toHaveLength(2);
     const stats = summarise(records);
     expect(stats.total).toBe(2);
     expect(stats.byHook.gate).toBe(1);
     expect(stats.confirmLabels.deny).toBe(1);
     expect(stats.cacheHits).toBe(1);
     expect(stats.tokens).toBe(5);
+  });
+
+  it("readLog reads the real filesystem when only a directory is given", () => {
+    const dir = mkdtempSync(join(tmpdir(), "jev-telemetry-"));
+    writeFileSync(
+      join(dir, "2026-09-18.jsonl"),
+      `${JSON.stringify({ hook: "gate", questionsVersion: "v", stateHash: "s", decision: "allow", shadow: true })}\n`,
+    );
+    expect(readLog({ dir })).toHaveLength(1);
   });
 });
 

@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { join } from "node:path";
-import { ConfigError, effectiveSkipCommands, loadConfig, timeouts, DEFAULT_SKIP_COMMANDS } from "../src/config.ts";
+import {
+  ConfigError,
+  deepMerge,
+  effectiveSkipCommands,
+  loadConfig,
+  resolveCustomPatterns,
+  timeouts,
+  DEFAULT_SKIP_COMMANDS,
+} from "../src/config.ts";
 
 const HOME = "/home/tester";
 const CWD = "/repo";
@@ -105,6 +113,34 @@ describe("config validation", () => {
     ).toThrow(/confirmBlastRadius/);
   });
 
+  it("rejects a non-array residency allowlist", () => {
+    expect(() =>
+      loadConfig({
+        cwd: CWD,
+        homeDir: HOME,
+        trusted: true,
+        env: {},
+        readFile: readFileMap({
+          [join(CWD, ".pi", "jev.json")]: { residency: { enabled: true, allowedRepos: "repo" } },
+        }),
+      }),
+    ).toThrow(/residency.allowedRepos/);
+  });
+
+  it("rejects non-numeric pricing", () => {
+    expect(() =>
+      loadConfig({
+        cwd: CWD,
+        homeDir: HOME,
+        trusted: true,
+        env: { PI_JEV_MAX_REQUESTS: "10" },
+        readFile: readFileMap({
+          [join(CWD, ".pi", "jev.json")]: { budget: { inputPricePerMTok: "free" } },
+        }),
+      }),
+    ).toThrow(/inputPricePerMTok/);
+  });
+
   it("rejects an invalid base URL", () => {
     expect(() =>
       loadConfig({
@@ -114,6 +150,33 @@ describe("config validation", () => {
         readFile: () => undefined,
       }),
     ).toThrow(/baseUrl/);
+  });
+
+  it("resolves inline custom redaction patterns", () => {
+    const config = loadConfig({
+      cwd: CWD,
+      homeDir: HOME,
+      trusted: true,
+      env: {},
+      readFile: readFileMap({
+        [join(CWD, ".pi", "jev.json")]: { redaction: { patterns: { custom: ["PROJECT-[0-9]{4}"] } } },
+      }),
+    });
+    expect(resolveCustomPatterns(config, CWD)).toEqual(["PROJECT-[0-9]{4}"]);
+  });
+
+  it("rejects a malformed inline custom pattern list", () => {
+    expect(() =>
+      loadConfig({
+        cwd: CWD,
+        homeDir: HOME,
+        trusted: true,
+        env: {},
+        readFile: readFileMap({
+          [join(CWD, ".pi", "jev.json")]: { redaction: { patterns: { custom: [1] } } },
+        }),
+      }),
+    ).toThrow(/redaction.patterns/);
   });
 
   it("rejects unsorted thinking bands", () => {
@@ -155,5 +218,17 @@ describe("derived config", () => {
     expect(effectiveSkipCommands(config.modules.gate)).toBe(DEFAULT_SKIP_COMMANDS);
     config.modules.gate.skipCommands = ["git status"];
     expect(effectiveSkipCommands(config.modules.gate)).toEqual(["git status"]);
+  });
+});
+
+describe("deepMerge hardening", () => {
+  it("ignores prototype-polluting keys from parsed config", () => {
+    const merged = deepMerge({ a: 1 }, JSON.parse('{"__proto__": {"polluted": true}, "b": 2}')) as Record<
+      string,
+      unknown
+    >;
+    expect(merged.b).toBe(2);
+    expect(Object.hasOwn(merged, "__proto__")).toBe(false);
+    expect(({} as { polluted?: boolean }).polluted).toBeUndefined();
   });
 });

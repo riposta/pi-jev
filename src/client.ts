@@ -357,6 +357,8 @@ export function createClient(deps: ClientDeps): Client {
         if (response.status === 429 || response.status === 529) {
           const retryAfter = Number(response.headers.get("retry-after")) * 1000;
           if (attempt < 2) {
+            // Drain the body so the retry does not leak the connection.
+            await response.body?.cancel().catch(() => undefined);
             await sleep(Number.isFinite(retryAfter) && retryAfter > 0 ? Math.min(retryAfter, 2000) : 250 * 2 ** attempt);
             continue;
           }
@@ -587,12 +589,37 @@ export function cost(usage: TokenUsage, config: Config): number {
   );
 }
 
-/** Serialises state and truncates it to the configured character budget. */
+function truncateStrings(value: unknown, limit: number): unknown {
+  if (typeof value === "string") {
+    return value.length > limit ? `${value.slice(0, limit)}…[truncated by pi-jev]` : value;
+  }
+  if (Array.isArray(value)) return value.map((entry) => truncateStrings(entry, limit));
+  if (value !== null && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [key, entry] of Object.entries(value)) out[key] = truncateStrings(entry, limit);
+    return out;
+  }
+  return value;
+}
+
+/**
+ * Truncates state to the configured character budget by shortening string
+ * leaves in place. Earlier this returned a bare JSON string, which changes the
+ * wire type of `state` and can make the API answer `422` (disabling the hook
+ * for the session). Keeping the object shape lets the questions still resolve
+ * their fields.
+ */
 export function truncateState(state: unknown, maxChars: number): unknown {
   const serialised = JSON.stringify(state);
-  if (serialised === undefined) return state;
-  if (serialised.length <= maxChars) return state;
-  return `${serialised.slice(0, maxChars)}…[truncated by pi-jev]`;
+  if (serialised === undefined || serialised.length <= maxChars) return state;
+  let limit = Math.max(1_000, Math.floor(maxChars / 4));
+  for (let attempt = 0; attempt < 16; attempt += 1) {
+    const candidate = truncateStrings(state, limit);
+    if ((JSON.stringify(candidate) ?? "").length <= maxChars) return candidate;
+    limit = Math.floor(limit / 2);
+    if (limit < 100) break;
+  }
+  return truncateStrings(state, 100);
 }
 
 function evictDisk(cache: DiskCacheFile): void {

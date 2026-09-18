@@ -9,7 +9,7 @@ import {
   type ShieldAnswers,
 } from "../src/modules/shield.ts";
 import { createRedactor } from "../src/redact.ts";
-import { choice, makeConfig, noul, score } from "./helpers.ts";
+import { choice, makeConfig, noul } from "./helpers.ts";
 
 function answers(patch: Partial<ShieldAnswers> = {}): ShieldAnswers {
   return {
@@ -40,7 +40,7 @@ describe("shield decision", () => {
     expect(withheldNotice("read", decision)).toContain("prompt injection");
   });
 
-  it("masks every text block", () => {
+  it("masks text blocks and preserves non-text blocks", () => {
     const redact = createRedactor();
     const masked = maskContent(
       [
@@ -49,7 +49,10 @@ describe("shield decision", () => {
       ],
       redact,
     );
-    expect(masked).toEqual([{ type: "text", text: "[redacted email]" }]);
+    expect(masked).toEqual([
+      { type: "text", text: "[redacted email]" },
+      { type: "image", data: "ignored" },
+    ]);
   });
 });
 

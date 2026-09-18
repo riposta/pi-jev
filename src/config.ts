@@ -242,6 +242,9 @@ export interface LoadConfigOptions {
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
+/** Keys that must never be merged from parsed JSON (prototype pollution). */
+const UNSAFE_KEYS = new Set(["__proto__", "constructor", "prototype"]);
+
 /** Recursive merge. Objects merge, arrays and primitives replace. */
 export function deepMerge<T>(base: T, override: unknown): T {
   if (override === undefined) return base;
@@ -249,8 +252,10 @@ export function deepMerge<T>(base: T, override: unknown): T {
   if (!isPlainObject(base) || !isPlainObject(override)) return override as T;
   const out: Record<string, unknown> = { ...base };
   for (const [key, value] of Object.entries(override)) {
-    if (value === undefined) continue;
-    out[key] = key in out ? deepMerge(out[key], value) : value;
+    if (value === undefined || UNSAFE_KEYS.has(key)) continue;
+    // Own-property check: never recurse into (and mutate) inherited prototype
+    // members such as `toString`.
+    out[key] = Object.hasOwn(out, key) ? deepMerge(out[key], value) : value;
   }
   return out as T;
 }
@@ -472,10 +477,18 @@ export function validateConfig(config: Config): void {
   }
   num(config.budget.maxRequestsPerSession, "budget.maxRequestsPerSession", 0);
   num(config.budget.maxTokensPerSession, "budget.maxTokensPerSession", 0);
+  num(config.budget.inputPricePerMTok, "budget.inputPricePerMTok", 0);
+  num(config.budget.outputPricePerMTok, "budget.outputPricePerMTok", 0);
   if (!["disable", "warn"].includes(config.budget.onBreach)) {
     throw new ConfigError('budget.onBreach must be "disable" or "warn"');
   }
   bool(config.residency.enabled, "residency.enabled");
+  for (const key of ["allowedModels", "allowedRepos"] as const) {
+    const list = config.residency[key];
+    if (!Array.isArray(list) || list.some((entry) => typeof entry !== "string" || entry.length === 0)) {
+      throw new ConfigError(`residency.${key} must be an array of non-empty strings`);
+    }
+  }
   for (const [key, value] of Object.entries(config.modules)) {
     if (!isPlainObject(value)) throw new ConfigError(`modules.${key} must be an object`);
   }
@@ -486,7 +499,9 @@ export function validateConfig(config: Config): void {
   validateWatchdog(config.modules.watchdog);
   num(config.redaction.maxStateChars, "redaction.maxStateChars", 1);
   const patterns = config.redaction.patterns;
-  if (patterns !== "default" && patterns !== "strict" && typeof patterns !== "string" && !isPlainObject(patterns)) {
+  const custom = isPlainObject(patterns) ? (patterns as { custom?: unknown }).custom : undefined;
+  const validCustom = Array.isArray(custom) && custom.every((entry) => typeof entry === "string");
+  if (patterns !== "default" && patterns !== "strict" && typeof patterns !== "string" && !validCustom) {
     throw new ConfigError('redaction.patterns must be "default", "strict", a file path, or { custom: string[] }');
   }
   bool(config.telemetry.enabled, "telemetry.enabled");
@@ -505,6 +520,10 @@ export function effectiveSkipCommands(gate: GateConfig): readonly string[] {
 export function resolveCustomPatterns(config: Config, cwd: string): string[] {
   const patterns = config.redaction.patterns;
   if (Array.isArray(patterns)) return patterns;
+  // The documented inline shape. Validation guarantees the entries are strings.
+  if (isPlainObject(patterns) && Array.isArray((patterns as { custom?: unknown }).custom)) {
+    return (patterns as { custom: string[] }).custom;
+  }
   if (typeof patterns === "string" && patterns !== "default" && patterns !== "strict") {
     const path = isAbsolute(patterns) ? patterns : join(cwd, patterns);
     try {

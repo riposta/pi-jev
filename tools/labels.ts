@@ -57,7 +57,8 @@ export function summariseLabels(records: readonly TelemetryRecord[]): LabelSumma
       continue;
     }
     summary.labelled += 1;
-    const rule = `r${(record.detail as { rule?: number } | undefined)?.rule ?? "?"}`;
+    const detail = record.detail as { rule?: number; branch?: string } | undefined;
+    const rule = `r${detail?.rule ?? "?"}${detail?.branch ? `:${detail.branch}` : ""}`;
     const bucket = (summary.byRule[rule] ??= { allow: 0, deny: 0, denyRate: Number.NaN });
     if (record.userChoice === "deny") {
       summary.deny += 1;

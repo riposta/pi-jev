@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { createClient, MalformedResponseError, parseAnswers } from "../src/client.ts";
+import { createClient, MalformedResponseError, parseAnswers, truncateState } from "../src/client.ts";
 import { createRedactor } from "../src/redact.ts";
 import { choice, makeConfig, makeState, memoryFs, noul, score, startMockJev, type MockJev } from "./helpers.ts";
 import type { QuestionSet, SessionState, TelemetryRecord } from "../src/types.ts";
@@ -226,6 +226,23 @@ describe("client ask", () => {
     expect(await client.ask("gate", { command: "x" }, QUESTIONS)).toBeNull();
     expect(state.clientDisabledReason).toContain("TYPESAFE_API_KEY");
     expect(mock.requests).toHaveLength(0);
+  });
+});
+
+describe("state truncation", () => {
+  it("truncates string leaves but keeps state an object under the budget", () => {
+    const big = "x".repeat(10_000);
+    const out = truncateState({ prompt: big, nested: { tool_output: big } }, 2_000);
+    expect(typeof out).toBe("object");
+    const record = out as { prompt: string; nested: { tool_output: string } };
+    expect(record.prompt).toContain("[truncated by pi-jev]");
+    expect(record.nested.tool_output).toContain("[truncated by pi-jev]");
+    expect(JSON.stringify(out).length).toBeLessThanOrEqual(2_000);
+  });
+
+  it("returns small state untouched", () => {
+    const state = { prompt: "hi" };
+    expect(truncateState(state, 1_000)).toBe(state);
   });
 });
 

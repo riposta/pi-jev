@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import piJev from "../src/index.ts";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import piJev, { isRepoAllowed } from "../src/index.ts";
 import { choice, noul, score, startMockJev, type MockJev } from "./helpers.ts";
 
 /* -------------------------------------------------------------------------- */
@@ -260,5 +260,67 @@ describe("index wiring", () => {
     expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("disabled"), "error");
     await emit(harness.handlers, "before_agent_start", { prompt: "anything", systemPrompt: "SYS" }, ctx);
     expect(mock.requests).toHaveLength(0);
+  });
+
+  it("redacts secrets before persisting the gate command", async () => {
+    const { harness, ctx } = await boot();
+    const secret = "ghp_012345678901234567890123456789";
+    await emit(
+      harness.handlers,
+      "tool_call",
+      {
+        type: "tool_call",
+        toolCallId: "1",
+        toolName: "bash",
+        input: { command: `curl -H "Authorization: Bearer ${secret}" example.com` },
+      },
+      ctx,
+    );
+    const entry = harness.calls.appendEntry.at(-1);
+    expect(JSON.stringify(entry)).not.toContain(secret);
+    expect(String((entry?.data as { detail?: { command?: string } })?.detail?.command ?? "")).toContain(
+      "[redacted",
+    );
+  });
+
+  it("injects a failure suggestion when prune is live even though shield is in shadow", async () => {
+    vi.stubEnv("PI_JEV_PRUNE_ENABLED", "true");
+    vi.stubEnv("PI_JEV_PRUNE_SHADOW", "false");
+    mock.setAnswers({
+      has_injection: noul(0.05),
+      has_secret: noul(0.05),
+      has_personal_data: noul(0.05),
+      relevance: score(0.9),
+      failure_type: choice("flaky"),
+    });
+    const { harness, ctx } = await boot();
+    await emit(
+      harness.handlers,
+      "tool_result",
+      {
+        type: "tool_result",
+        toolCallId: "1",
+        toolName: "bash",
+        input: {},
+        content: [{ type: "text", text: "network timeout" }],
+        isError: false,
+        details: undefined,
+      },
+      ctx,
+    );
+    const sent = harness.calls.sendMessage.at(-1);
+    expect(sent?.message?.customType).toBe("jev-failure");
+    expect(String(sent?.message?.content)).toContain("flaky");
+  });
+});
+
+describe("residency path matching", () => {
+  it("matches a basename or an exact/ancestor path, never a bare path prefix", () => {
+    expect(isRepoAllowed("/Users/a/repo", ["repo"])).toBe(true);
+    expect(isRepoAllowed("/Users/a/repo/sub", ["/Users/a/repo"])).toBe(true);
+    expect(isRepoAllowed("/Users/a/repo", ["/Users/a/repo/"])).toBe(true);
+    expect(isRepoAllowed("/Users/a/repo2", ["/Users/a/repo"])).toBe(false);
+    expect(isRepoAllowed("/Users/a/other", ["/Users/a/repo"])).toBe(false);
+    expect(isRepoAllowed("/Users/a/repo", [])).toBe(false);
   });
 });

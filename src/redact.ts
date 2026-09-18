@@ -104,24 +104,30 @@ export function createRedactor(options: RedactorOptions = {}): RedactFn {
     return applyRules(text, rules);
   }) as RedactFn;
 
-  function walk(value: unknown, seen: WeakSet<object>): unknown {
+  // `path` is the recursion stack, not a global seen-set: a node shared by two
+  // branches (a DAG, common in JSON) must be redacted on both visits, while a
+  // true cycle is still cut. Entries are removed on the way back up.
+  function walk(value: unknown, path: Set<object>): unknown {
     if (typeof value === "string") return redact(value);
     if (Array.isArray(value)) {
-      if (seen.has(value)) return "[circular]";
-      seen.add(value);
-      return value.map((entry) => walk(entry, seen));
+      if (path.has(value)) return "[circular]";
+      path.add(value);
+      const out = value.map((entry) => walk(entry, path));
+      path.delete(value);
+      return out;
     }
     if (typeof value === "object" && value !== null) {
-      if (seen.has(value)) return "[circular]";
-      seen.add(value);
+      if (path.has(value)) return "[circular]";
+      path.add(value);
       const out: Record<string, unknown> = {};
-      for (const [key, entry] of Object.entries(value)) out[key] = walk(entry, seen);
+      for (const [key, entry] of Object.entries(value)) out[key] = walk(entry, path);
+      path.delete(value);
       return out;
     }
     return value;
   }
 
-  redact.deep = (value: unknown): unknown => walk(value, new WeakSet());
+  redact.deep = (value: unknown): unknown => walk(value, new Set());
 
   return redact;
 }

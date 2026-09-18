@@ -1,0 +1,60 @@
+name: Publish to npm
+
+# Publishes the package when a version tag is pushed (e.g. v0.1.0), or on
+# demand from the Actions tab.
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  # Required for npm Trusted Publishing (OIDC) and provenance attestations.
+  # With this, no long-lived NPM_TOKEN secret is needed.
+  id-token: write
+
+concurrency:
+  group: npm-publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.19"
+          registry-url: "https://registry.npmjs.org"
+          cache: npm
+
+      # Trusted Publishing needs npm >= 11.5.1; Node 22.19 ships npm 10.x.
+      - name: Upgrade npm for OIDC publishing
+        run: npm install -g npm@latest
+
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+
+      - name: Check the tag matches package.json
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          pkg="$(node -p "require('./package.json').version")"
+          tag="${GITHUB_REF_NAME#v}"
+          if [ "$pkg" != "$tag" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match package.json version $pkg" >&2
+            exit 1
+          fi
+
+      - name: Publish
+        run: npm publish
+        # Trusted Publishing: npm exchanges the GitHub OIDC token automatically,
+        # so no NODE_AUTH_TOKEN is set.
+        #
+        # Fallback if Trusted Publishing is not configured yet: create a
+        # granular npm token with read/write access to the @riposta scope, add
+        # it as the repository secret NPM_TOKEN, and uncomment:
+        # env:
+        #   NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

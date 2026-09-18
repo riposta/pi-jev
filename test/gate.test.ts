@@ -4,6 +4,7 @@ import {
   decideGate,
   describeToolInput,
   enforceBlockPolicy,
+  gateCacheKey,
   isSkippedCommand,
   isSkippedTool,
   normaliseCommand,
@@ -136,6 +137,45 @@ describe("pre-flight skips", () => {
   it("skips read-only tools", () => {
     expect(isSkippedTool("read", ["read", "ls", "grep", "find"])).toBe(true);
     expect(isSkippedTool("bash", ["read", "ls", "grep", "find"])).toBe(false);
+  });
+
+  it("never skips a read-only prefix carrying a mutating flag", () => {
+    for (const command of [
+      "find . -delete",
+      "find . -exec rm {} +",
+      "find . -execdir sh -c 'x' ;",
+      "git branch -D feature",
+      "git branch --delete feature",
+      "eslint --fix src",
+      "git diff --output=/tmp/x",
+    ]) {
+      expect(isSkippedCommand(command, DEFAULT_SKIP_COMMANDS), command).toBe(false);
+    }
+  });
+
+  it("still skips the benign forms", () => {
+    expect(isSkippedCommand("find . -type f -name '*.ts'", DEFAULT_SKIP_COMMANDS)).toBe(true);
+    expect(isSkippedCommand("git branch", DEFAULT_SKIP_COMMANDS)).toBe(true);
+    expect(isSkippedCommand("eslint src", DEFAULT_SKIP_COMMANDS)).toBe(true);
+    expect(isSkippedCommand("git diff --stat", DEFAULT_SKIP_COMMANDS)).toBe(true);
+  });
+});
+
+describe("gate disk-cache key", () => {
+  it("is stable for identical input", () => {
+    expect(gateCacheKey("chmod 755 file", "fix perms", "repo")).toBe(
+      gateCacheKey("chmod 755 file", "fix perms", "repo"),
+    );
+  });
+
+  it("separates numeric arguments, requests and repositories", () => {
+    const base = gateCacheKey("chmod 755 file", "fix perms", "repo");
+    // The normalised key alone collapsed these; the digest must not.
+    expect(gateCacheKey("chmod 000 file", "fix perms", "repo")).not.toBe(base);
+    // matches_intent is derived from the request, so the request must be keyed.
+    expect(gateCacheKey("chmod 755 file", "a different request", "repo")).not.toBe(base);
+    // A decision must not leak across repositories.
+    expect(gateCacheKey("chmod 755 file", "fix perms", "other-repo")).not.toBe(base);
   });
 });
 

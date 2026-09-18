@@ -36,14 +36,19 @@ export interface PrunedOutput {
   notice: string;
 }
 
-/** Writes the full output to a temp file and returns the pointer notice. */
+/**
+ * Writes the output to a temp file and returns the pointer notice. The file is
+ * owner-only (`0600`): it holds (redacted) repository content, and the default
+ * umask would otherwise leave it world-readable. The caller already caps the
+ * content, so the notice says "stored", not "full".
+ */
 export function pruneOutput(raw: string, toolCallId: string, dir: string = tmpdir()): PrunedOutput {
   const path = join(dir, `pi-jev-${toolCallId.replace(/[^A-Za-z0-9_-]/g, "_")}.txt`);
-  writeFileSync(path, raw);
+  writeFileSync(path, raw, { mode: 0o600 });
   const summary = firstLine(raw, 200);
   const notice = summary
-    ? `Jev: output pruned as low-relevance. Full output at ${path}\n${summary}`
-    : `Jev: output pruned as low-relevance. Full output at ${path}`;
+    ? `Jev: output pruned as low-relevance. Stored output at ${path}\n${summary}`
+    : `Jev: output pruned as low-relevance. Stored output at ${path}`;
   return { path, notice };
 }
 

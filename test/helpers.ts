@@ -169,7 +169,7 @@ export async function startMockJev(options: MockJevOptions = {}): Promise<MockJe
   };
 }
 
-function defaultAnswer(id: string, type: string): Answer {
+function defaultAnswer(_id: string, type: string): Answer {
   if (type === "noul") return noul(0.05);
   if (type === "score") return score(0);
   return choice("other");

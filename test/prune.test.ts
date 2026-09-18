@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { evaluatePrune, failureSuggestion, pruneOutput, type PruneAnswers } from "../src/modules/prune.ts";
@@ -37,6 +37,12 @@ describe("prune output", () => {
     expect(readFileSync(result.path, "utf8")).toBe(raw);
     expect(result.notice).toContain("first line");
     expect(result.notice).toContain(result.path);
+  });
+
+  it("writes the temp file owner-only", () => {
+    const dir = mkdtempSync(join(tmpdir(), "jev-prune-"));
+    const { path } = pruneOutput("secret-ish repository content", "call-1", dir);
+    expect(statSync(path).mode & 0o777).toBe(0o600);
   });
 });
 

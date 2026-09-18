@@ -68,4 +68,14 @@ describe("redact.ts", () => {
     value.self = value;
     expect(() => redact.deep(value)).not.toThrow();
   });
+
+  it("redacts a shared node on every branch without cutting it", () => {
+    const shared = { token: "ghp_012345678901234567890123456789" };
+    const out = redact.deep({ first: shared, second: shared }) as {
+      first: { token: string };
+      second: { token: string };
+    };
+    expect(out.first.token).toBe("[redacted token]");
+    expect(out.second.token).toBe("[redacted token]");
+  });
 });

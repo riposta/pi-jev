@@ -161,6 +161,12 @@ export interface GateDecision {
   outcome: GateOutcome;
   /** Which row of the decision table fired (1-based) or 0 for the fall-through. */
   rule: number;
+  /**
+   * Distinguishes branches that share a row number. Rule 4 covers both the
+   * shared-resource blast radius and the "irreversible beyond scratch files"
+   * case; labelling them apart keeps the per-rule calibration honest.
+   */
+  branch?: string;
   reason: string;
   numbers: Record<string, number>;
 }

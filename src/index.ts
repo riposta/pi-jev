@@ -42,10 +42,22 @@ function basename(path: string): string {
   return parts[parts.length - 1] ?? path;
 }
 
-function isRepoAllowed(cwd: string, allowed: readonly string[]): boolean {
+export function isRepoAllowed(cwd: string, allowed: readonly string[]): boolean {
   if (allowed.length === 0) return false;
-  const name = basename(cwd);
-  return allowed.some((entry) => entry === name || cwd === entry || cwd.startsWith(`${entry}/`));
+  const normalizedCwd = cwd.replace(/[\\/]+$/, "");
+  const name = basename(normalizedCwd);
+  return allowed.some((raw) => {
+    const entry = raw.replace(/[\\/]+$/, "");
+    if (entry.length === 0) return false;
+    // A bare name matches the repository basename; a path must match exactly
+    // or as an ancestor on a path boundary (so /a/b never matches /a/bc).
+    if (!entry.includes("/") && !entry.includes("\\")) return entry === name;
+    return (
+      normalizedCwd === entry ||
+      normalizedCwd.startsWith(`${entry}/`) ||
+      normalizedCwd.startsWith(`${entry}\\`)
+    );
+  });
 }
 
 export default function piJev(pi: ExtensionAPI): void {
@@ -79,7 +91,17 @@ export default function piJev(pi: ExtensionAPI): void {
     },
     ask,
     log: (record) => telemetry?.log(record),
-    appendEntry: (record) => pi.appendEntry("jev-decision", record),
+    appendEntry: (record) => {
+      // Mirror telemetry's stamping and privacy rules: the durable transcript
+      // must not carry more than the log does.
+      const stamped: TelemetryRecord = {
+        ...record,
+        ts: new Date().toISOString(),
+        questionsVersion: record.questionsVersion || QUESTIONS_VERSION,
+      };
+      if (!config.telemetry.logStateContent) delete stamped.state;
+      pi.appendEntry("jev-decision", stamped);
+    },
     state,
     status: (text) => currentCtx?.ui.setStatus("jev", text),
     now: () => Date.now(),
@@ -347,7 +369,9 @@ function registerToolResultPipeline(pi: ExtensionAPI, deps: Deps): void {
       return { content: [{ type: "text" as const, text: shield.withheldNotice(event.toolName, shieldDecision) }] };
     }
     if (!state.shadow.shield && shieldEnabled && shield.shieldHasMasking(shieldDecision)) {
-      return { content: shield.maskContent(event.content, deps.redact) };
+      // maskContent keeps the original block shape (text redacted, non-text
+      // passed through), so this is a same-shape, redacted copy of the input.
+      return { content: shield.maskContent(event.content, deps.redact) as typeof event.content };
     }
     if (!state.shadow.prune && pruneEnabled && pruneDecision.prune) {
       const redactedRaw = deps.redact(raw);
@@ -356,7 +380,10 @@ function registerToolResultPipeline(pi: ExtensionAPI, deps: Deps): void {
     }
 
     // Speculative failure-type suggestion; cheap and occasionally saves a detour.
-    const suggestion = state.shadow.shield ? null : prune.failureSuggestion(result.answers);
+    // It belongs to prune, so prune's own shadow flag (not shield's) gates it:
+    // shield ships in shadow by default and used to suppress this silently.
+    const suggestion =
+      pruneEnabled && !state.shadow.prune ? prune.failureSuggestion(result.answers) : null;
     if (suggestion) {
       pi.sendMessage(
         { customType: "jev-failure", content: suggestion, display: true },

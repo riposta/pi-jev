@@ -9,12 +9,11 @@
  * (initial_plan.md §9.2, 9.6).
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { isToolCallEventType } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { effectiveSkipCommands } from "../config.ts";
 import { GATE_QUESTIONS } from "../questions.ts";
 import type { Answers, Config, Deps, GateDecision, GateOutcome } from "../types.ts";
-import { formatStatus } from "../telemetry.ts";
+import { formatStatus, sha256Hex } from "../telemetry.ts";
 
 export type GateAnswers = Answers<typeof GATE_QUESTIONS>;
 
@@ -24,11 +23,33 @@ export type GateAnswers = Answers<typeof GATE_QUESTIONS>;
 
 const SHELL_OPERATORS = /[|&;<>`$()\n]/;
 
-/** True when the command is exactly a read-only prefix and contains no chaining or redirects. */
+/**
+ * Flags that make an otherwise read-only prefix able to mutate or execute
+ * arbitrary code. The allowlist is prefix-based, so `find` would otherwise
+ * skip `find . -delete` and `git branch` would skip `git branch -D`. A command
+ * carrying any of these is always classified (never skipped).
+ */
+const DANGEROUS_FLAGS: readonly RegExp[] = [
+  /(?:^|\s)-delete(?:\s|$)/, // find -delete
+  /(?:^|\s)-exec(?:dir)?(?:\s|$)/, // find -exec / -execdir
+  /(?:^|\s)-ok(?:dir)?(?:\s|$)/, // find -ok / -okdir
+  /(?:^|\s)--(?:delete|force)(?:\s|=|$)/, // git branch --delete, rm --force
+  /(?:^|\s)-[dD](?:\s|$)/, // git branch -d / -D
+  /(?:^|\s)--fix(?:-dry-run)?(?:\s|=|$)/, // eslint --fix
+  /(?:^|\s)--output(?:\s|=|$)/, // git diff --output=FILE
+  /(?:^|\s)-i(?:\s|$)/, // sed -i (defensive; sed is not allowlisted today)
+  /(?:^|\s)--in-place(?:\s|=|$)/,
+];
+
+/**
+ * True when the command is exactly a read-only prefix and contains no chaining,
+ * redirection, or flag that turns the prefix into a mutation.
+ */
 export function isSkippedCommand(command: string, allowlist: readonly string[]): boolean {
   const trimmed = command.trim();
   if (trimmed.length === 0) return false;
   if (SHELL_OPERATORS.test(trimmed)) return false;
+  if (DANGEROUS_FLAGS.some((pattern) => pattern.test(trimmed))) return false;
   return allowlist.some((prefix) => {
     if (trimmed === prefix) return true;
     return trimmed.startsWith(`${prefix} `) || trimmed.startsWith(`${prefix}\t`);
@@ -55,6 +76,18 @@ export function normaliseCommand(command: string): string {
     .replace(/\b\d+(?:\.\d+)?\b/g, "N")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+/**
+ * Disk-cache key for a gate decision. The normalised command groups trivially
+ * different spellings, but the exact command, the original request and the
+ * repository are hashed in too: `matches_intent` is derived from the request,
+ * and numeric arguments change meaning (`chmod 000` vs `chmod 755`), so a key
+ * based on the normalised command alone would serve a decision from the wrong
+ * context.
+ */
+export function gateCacheKey(command: string, userRequest: string, cwdBasename: string): string {
+  return `${normaliseCommand(command)}#${sha256Hex(`${cwdBasename}\n${userRequest}\n${command}`)}`;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -123,7 +156,13 @@ export function decideGate(answers: GateAnswers, config: Config): GateDecision {
     return { outcome: "confirm", rule: 3, reason: `outside the original request (${intent.toFixed(2)})`, numbers };
   }
   if (blast >= t.confirmBlastRadius) {
-    return { outcome: "confirm", rule: 4, reason: `blast radius ${blast.toFixed(1)}/3`, numbers };
+    return {
+      outcome: "confirm",
+      rule: 4,
+      branch: "shared",
+      reason: `blast radius ${blast.toFixed(1)}/3`,
+      numbers,
+    };
   }
   // Added after the first calibration run (initial_plan.md §13.3): a command that is not
   // cleanly reversible and reaches beyond the files being worked on is worth a
@@ -137,6 +176,7 @@ export function decideGate(answers: GateAnswers, config: Config): GateDecision {
     return {
       outcome: "confirm",
       rule: 4,
+      branch: "irreversible",
       reason: `not cleanly reversible (${reversible.toFixed(2)}) at blast radius ${blast.toFixed(1)}/3`,
       numbers,
     };
@@ -205,11 +245,11 @@ export function register(pi: ExtensionAPI, deps: Deps): void {
 
     const result = await deps.ask("gate", state, GATE_QUESTIONS, {
       signal: ctx.signal,
-      cacheKey: normaliseCommand(command),
+      cacheKey: gateCacheKey(command, userRequest, basename(ctx.cwd)),
     });
 
     if (!result) {
-      return failOpen(deps, ctx, tool, command);
+      return failOpen(deps, tool, command);
     }
 
     const computed = enforceBlockPolicy(decideGate(result.answers, deps.config), config.allowBlock);
@@ -255,8 +295,12 @@ export function register(pi: ExtensionAPI, deps: Deps): void {
       reason: computed.reason,
       detail: {
         rule: computed.rule,
+        branch: computed.branch,
         numbers: computed.numbers,
-        command: command.slice(0, 500),
+        // Redacted: telemetry and the durable transcript must not persist
+        // credentials that appeared in the command (logStateContent only
+        // governs the `state` field, not `detail`).
+        command: deps.redact(command).slice(0, 500),
       },
     };
     deps.log(record);
@@ -269,7 +313,7 @@ export function register(pi: ExtensionAPI, deps: Deps): void {
   });
 }
 
-function failOpen(deps: Deps, ctx: ExtensionContext, tool: string, command: string): { block: true; reason: string } | void {
+function failOpen(deps: Deps, tool: string, command: string): { block: true; reason: string } | void {
   const config = deps.config.modules.gate;
   const shadow = deps.state.shadow.gate;
   const deny = !shadow && config.onFailure === "deny";
@@ -282,7 +326,7 @@ function failOpen(deps: Deps, ctx: ExtensionContext, tool: string, command: stri
     shadow,
     wouldHaveBeen: "fail_open",
     reason: "classification unavailable",
-    detail: { command: command.slice(0, 500) },
+    detail: { command: deps.redact(command).slice(0, 500) },
   });
   deps.status(formatStatus(deps.state, deps.config));
   if (deny) return { block: true, reason: "Jev: classification unavailable and gate.onFailure=deny" };

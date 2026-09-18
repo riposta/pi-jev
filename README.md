@@ -21,7 +21,7 @@ Five independently switchable modules, one request per hook, shadow mode by defa
 | 2 | `gate` | implemented, shadow; `block` opt-in |
 | 3 | `shield` | implemented, shadow |
 | 4 | `prune` + `watchdog` | implemented, disabled by default |
-| 5 | release + measured numbers | fixtures measured; npm/git publish pending |
+| 5 | release + measured numbers | fixtures measured; published as npm `@riposta/pi-jev@0.1.0` and installable from git |
 
 Every module ships in **shadow mode**: it classifies, logs the counterfactual
 decision, and changes nothing until you promote it. See [Promoting a module](#promoting-a-module).
@@ -91,12 +91,16 @@ key is only used for requests to `api.typesafe.ai`.
 Pi `>= 0.85.0` is required.
 
 ```bash
-# from git
-pi install git:github.com/riposta/pi-jev
+# from npm
+pi install npm:@riposta/pi-jev
 
-# or from npm
-pi install npm:pi-jev
+# or from git
+pi install git:github.com/riposta/pi-jev
 ```
+
+> **Use the scoped `@riposta/pi-jev`, not `pi-jev`.** The unscoped npm name
+> `pi-jev` belongs to an unrelated project (`github.com/TheoOliveira/pi-jev`),
+> so `pi install npm:pi-jev` would install someone else's code.
 
 For local development, run Pi with the extension directly:
 
@@ -264,7 +268,8 @@ any request leaves: credential shapes, bearer tokens, private key blocks,
 connection strings, `.env` assignments, JWTs, emails, and absolute paths reduced
 to basenames. It is deliberately over-eager. `redaction.patterns: "strict"` adds
 cards, national identifiers, IPs and phone numbers; a custom JSON array of regex
-sources is also accepted.
+sources is also accepted, either as a file path or inline as
+`{ "patterns": { "custom": ["…"] } }`.
 
 **The known limitation.** `shield` exists to catch secrets patterns miss, but
 content must reach Jev to be classified. Pattern redaction reduces exposure; it
@@ -281,7 +286,7 @@ organisational redaction.
 ## Testing
 
 ```bash
-npm test          # 119 unit + integration tests, no network
+npm test          # 142 unit + integration tests, no network
 npm run typecheck
 npm run test:coverage
 npm run test:pi   # end-to-end against the real `pi` CLI (needs pi >= 0.85 on PATH)

@@ -12,7 +12,7 @@ import { appendFileSync, mkdirSync, readFileSync, readdirSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { isAbsolute, join } from "node:path";
 import { QUESTIONS_VERSION } from "./questions.ts";
-import type { Answer, Config, SessionState, TelemetryRecord, TokenUsage } from "./types.ts";
+import type { Answer, Config, SessionState, TelemetryRecord } from "./types.ts";
 
 /* -------------------------------------------------------------------------- */
 /* Hashing helpers (shared with client.ts)                                    */
@@ -159,8 +159,10 @@ export interface ReadLogOptions {
 
 /** Reads every `*.jsonl` in `dir`, optionally only files on/after `since`. */
 export function readLog(options: ReadLogOptions): TelemetryRecord[] {
-  const readFile = options.readFile ?? (() => undefined);
-  const readdir = options.readdir ?? (() => []);
+  // Default to the real filesystem. Callers such as `/jev stats` pass only a
+  // directory, so a no-op default here silently returned zero records.
+  const readFile = options.readFile ?? readFileSafe;
+  const readdir = options.readdir ?? ((path: string) => readdirSync(path));
   let files: string[];
   try {
     files = readdir(options.dir);
@@ -170,7 +172,7 @@ export function readLog(options: ReadLogOptions): TelemetryRecord[] {
   const records: TelemetryRecord[] = [];
   for (const file of files.filter((f) => f.endsWith(".jsonl")).sort()) {
     if (options.since && file < `${options.since}.jsonl`) continue;
-    const text = readFile(join(options.dir, file)) ?? readFileSafe(join(options.dir, file));
+    const text = readFile(join(options.dir, file));
     if (text) records.push(...parseJsonl(text));
   }
   return records;
@@ -217,7 +219,9 @@ export function summarise(records: readonly TelemetryRecord[]): Stats {
 /* Formatting                                                                 */
 /* -------------------------------------------------------------------------- */
 
-export function formatStatus(state: SessionState, config: Config): string {
+// `config` is accepted so the status line can grow config-dependent fields
+// without an API change; nothing reads it yet.
+export function formatStatus(state: SessionState, _config: Config): string {
   if (!state.layerEnabled) return `jev off${state.clientDisabledReason ? ` — ${state.clientDisabledReason}` : ""}`;
   if (state.clientDisabledReason) return `jev off — ${state.clientDisabledReason}`;
   const parts = [`jev ${state.activeTier ?? "idle"}`, `${state.requests} req`];

@@ -37,16 +37,19 @@ export function withheldNotice(tool: string, decision: ShieldDecision): string {
   return `Jev: output from "${tool}" was withheld (${decision.reasons.join(", ")}).`;
 }
 
-/** Masks every text block of a tool result. */
-export function maskContent(
-  content: readonly unknown[],
-  redact: RedactFn,
-): { type: "text"; text: string }[] {
-  const out: { type: "text"; text: string }[] = [];
+/**
+ * Masks every text block of a tool result. Non-text blocks (images, files) are
+ * passed through untouched rather than dropped: masking a secret in the prose
+ * must not silently delete an attachment the agent still needs.
+ */
+export function maskContent(content: readonly unknown[], redact: RedactFn): unknown[] {
+  const out: unknown[] = [];
   for (const block of content) {
     if (block && typeof block === "object" && (block as { type?: string }).type === "text") {
       const text = (block as { text?: string }).text ?? "";
       out.push({ type: "text", text: redact(text) });
+    } else {
+      out.push(block);
     }
   }
   return out;

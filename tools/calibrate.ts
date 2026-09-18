@@ -29,6 +29,9 @@ export type GateThresholdKey =
   | "confirmReversibleFloor"
   | "confirmDriftBlastRadius"
   | "confirmIntentDrift"
+  | "confirmRegenerableThreshold"
+  | "confirmInstallsSoftware"
+  | "confirmPrivilegedOrRemote"
   | "confirmSecrets"
   | "confirmExfiltration"
   | "confidenceFloor";
