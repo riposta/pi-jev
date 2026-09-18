@@ -1,7 +1,7 @@
 /**
  * tools/labels.ts — read the gate's `userChoice` labels out of a log.
  *
- * Every confirm answer the user gives is a supervised label (SDD 13.3). This
+ * Every confirm answer the user gives is a supervised label (initial_plan.md §13.3). This
  * summarises them: overall allow/deny, deny rate per decision-table rule, and
  * the commands the user denied. With `--sweep <threshold>` it also replays the
  * recorded answers at each threshold and reports the deny rate among the

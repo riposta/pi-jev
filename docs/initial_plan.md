@@ -1,6 +1,15 @@
-# SDD — pi-jev: a Jev classification layer for the Pi coding agent
+# Initial plan — pi-jev: a Jev classification layer for the Pi coding agent
 
 2026-09-18 · @Adam Dąbrowski
+
+> **Status.** This is the original design, kept for reference. The implementation
+> and the measured calibration have since diverged in a few places; every change
+> is recorded in [`calibration.md`](calibration.md) and marked `[updated]` inline
+> below. In short: timeouts were raised to match measured latency; router
+> confidence handling was split by question type; the gate decision table gained
+> an irreversible-and-regenerable rule and a blast-gated drift rule; and the gate
+> question set grew from six to nine after labelled evidence. The acceptance
+> numbers are in [`../README.md`](../README.md).
 
 ## 1. Overview
 
@@ -105,6 +114,7 @@ pi-jev/
 │   ├── client.ts             # ask(), cache, timeout, budget, usage accounting
 │   ├── redact.ts             # scrubbing applied before anything leaves the machine
 │   ├── telemetry.ts          # JSONL log, appendEntry, status line
+│   ├── messages.ts           # [updated] local turn summaries for watchdog
 │   ├── types.ts              # shared types, decision enums
 │   └── modules/
 │       ├── router.ts
@@ -114,11 +124,20 @@ pi-jev/
 │       └── watchdog.ts
 ├── tools/
 │   ├── calibrate.ts          # threshold sweep over a log file
-│   └── replay.ts             # re-run a log against changed questions
-├── fixtures/                 # labelled prompts and commands for evaluation
-├── docs/
+│   ├── replay.ts             # re-run a log against changed questions
+│   ├── evaluate.ts           # [updated] acceptance metrics over the fixtures
+│   ├── sweep.ts              # [updated] offline sweep over a saved evaluate report
+│   ├── labels.ts             # [updated] read gate userChoice labels
+│   └── score-labels.ts       # [updated] score the gate against expert labels
+├── fixtures/                 # [updated] prompts, commands, injections, gate-real
+├── test/                     # [updated] unit + integration tests
+├── docs/                     # this plan and calibration.md
 └── examples/
 ```
+
+`[updated]` The shipped tree adds `src/messages.ts`, three calibration tools, the
+labelled `fixtures/gate-real.jsonl`, and a `test/` tree that includes a real-Pi
+end-to-end harness under `test/pi/`.
 
 ### 5.2 Module boundaries
 
@@ -185,12 +204,17 @@ A `null` return is the single failure signal. Modules branch on it once, into th
 
 Budgets are per hook, because the hooks differ by two orders of magnitude in call volume.
 
-| Hook | Budget | Reasoning |
-| --- | --- | --- |
-| `router` | 800 ms | once per prompt, hidden behind the user's own latency |
-| `gate` | 400 ms | tens of calls per session, directly in the critical path |
-| `shield` + `prune` | 1500 ms | already waiting on tool output |
-| `watchdog` | 1000 ms | every third turn, off the hot path |
+| Hook | Budget (initial) | Budget (calibrated) | Reasoning |
+| --- | --- | --- | --- |
+| `router` | 800 ms | **2500 ms** | once per prompt, hidden behind the user's own latency |
+| `gate` | 400 ms | **2000 ms** | tens of calls per session, directly in the critical path |
+| `shield` + `prune` | 1500 ms | **3000 ms** | already waiting on tool output |
+| `watchdog` | 1000 ms | **2000 ms** | every third turn, off the hot path |
+
+`[updated]` The initial budgets measured below the real p50/p95 of `api.typesafe.ai`
+(p50 673 ms, p95 1752 ms), so the three-strike rule disabled hooks and the layer
+became inert. Defaults now sit at p95 + margin and are configurable per module
+(`PI_JEV_<MODULE>_TIMEOUT_MS`). See [`calibration.md`](calibration.md).
 
 On expiry the client resolves `null`. `ctx.signal` is forwarded to `fetch` so Esc cancels pending classifications alongside the model call.
 
@@ -362,26 +386,44 @@ Including the original user request is the design choice that distinguishes this
 | --- | --- | --- |
 | `blast_radius` | Score | working files → local repo state → shared resources → production or irreversible |
 | `reversible` | Noul | can this be undone without losing work |
+| `regenerable` | Noul | *[updated]* does it only refresh artefacts a build can recreate |
 | `touches_secrets` | Noul | does it read, write or expose credentials |
 | `matches_intent` | Noul | does this operation fall within what the user asked for |
 | `exfiltrates` | Noul | does it send data outside the machine |
 | `unverified_code` | Noul | does it fetch and execute external code without verification |
+| `installs_software` | Noul | *[updated]* does it install from a package registry |
+| `privileged_or_remote` | Noul | *[updated]* sudo/su, or execute on a remote host |
+
+`[updated]` Three questions were added after labelled evidence showed no threshold
+could express the distinction: `regenerable` separates a rebuild from a lost-work
+reset; `installs_software` and `privileged_or_remote` cover supply-chain and
+privilege/remote commands that were otherwise allowed. With nine questions, prefix
+caching matters more; they travel in the same single request (P2), so the cost is
+their tokens only.
 
 ### 9.4 Decision table
 
-Evaluated top to bottom; first match wins.
+Evaluated top to bottom; first match wins. `[updated]` rows 3 and 4 changed and
+row 5 grew; all new thresholds are in `config.ts`.
 
 | # | Condition | Outcome |
 | --- | --- | --- |
 | 1 | `unverified_code > 0.80` | **block** |
 | 2 | `blast_radius ≥ 3.0` and `reversible < 0.30` | **block** |
-| 3 | `matches_intent < 0.40` | **confirm** (drift) |
-| 4 | `blast_radius ≥ 2.0` | **confirm** |
-| 5 | `touches_secrets > 0.60` or `exfiltrates > 0.60` | **confirm** |
+| 3 | `matches_intent < 0.40` **and `blast_radius ≥ 1.0`** | **confirm** (drift) |
+| 4 | `blast_radius ≥ 2.0`, or `blast_radius ≥ 1.0` and `reversible < 0.75` and `regenerable < 0.60` | **confirm** |
+| 5 | `touches_secrets > 0.60`, `exfiltrates > 0.60`, `installs_software > 0.60`, or `privileged_or_remote > 0.60` | **confirm** |
 | 6 | `confidence(blast_radius) < 0.50` | **confirm** (uncertainty) |
 | 7 | otherwise | **allow** |
 
 Every threshold lives in `config.ts`. Rows 1 and 2 are disabled by default in v1 — `block` requires explicit opt-in after shadow data exists.
+
+`[updated]` Rationale for the changed rows: drift only matters when the command can
+change something, so rule 3 requires `blast_radius ≥ 1.0` (read-only detours are
+not drift); rule 4's `regenerable` guard stops builds from confirming; and rule 5
+groups the four trust signals, naming the strongest one that fired. On the
+labelled sample this gives 100% confirm recall with 2/124 false positives and zero
+missed dangerous commands.
 
 ### 9.5 User interaction
 
@@ -483,11 +525,14 @@ Resolution order: built-in defaults → `~/.pi/agent/jev.json` → `.pi/jev.json
 {
   "apiKeyEnv": "TYPESAFE_API_KEY",
   "model": "jev-latest",
+  "baseUrl": "https://api.typesafe.ai",   // [updated] override for a self-hosted proxy
 
   "budget": {
     "maxRequestsPerSession": 200,
     "maxTokensPerSession": 400000,
-    "onBreach": "disable"        // "disable" | "warn"
+    "onBreach": "disable",                // "disable" | "warn"
+    "inputPricePerMTok": 0,               // [updated] 0 disables cost display
+    "outputPricePerMTok": 0
   },
 
   "residency": {
@@ -505,11 +550,20 @@ Resolution order: built-in defaults → `~/.pi/agent/jev.json` → `.pi/jev.json
     "router": {
       "enabled": true,
       "shadow": true,
-      "timeoutMs": 800,
-      "confidenceFloor": 0.55,
+      "timeoutMs": 2500,                 // [updated] measured p95 + margin
+      "confidenceFloor": 0.40,           // [updated] applies to task_type (Choice)
+      "reasoningConfidenceFloor": 0,     // [updated] Score confidence is not comparable
+      "reasoningBumpScore": 1.60,        // [updated] moved out of code
+      "reasoningDropScore": 0,
       "clarifyThreshold": 0.70,
       "readOnlyThreshold": 0.20,
       "sensitiveThreshold": 0.60,
+      "skillRouting": false,             // false = `domain` is not sent at all
+      "thinkingBands": [
+        { "max": 0.75, "level": "off" },
+        { "max": 1.5,  "level": "low" },
+        { "max": 3,    "level": "high" }
+      ],
       "tiers": {
         "cheap":    { "provider": "anthropic", "model": "claude-haiku-4-5",  "thinking": "off" },
         "standard": { "provider": "anthropic", "model": "claude-sonnet-5",   "thinking": "low" },
@@ -520,16 +574,24 @@ Resolution order: built-in defaults → `~/.pi/agent/jev.json` → `.pi/jev.json
     "gate": {
       "enabled": true,
       "shadow": true,
-      "timeoutMs": 400,
+      "timeoutMs": 2000,                 // [updated] measured p95 + margin
       "allowBlock": false,
+      "onFailure": "allow",              // [updated] "allow" | "deny"
+      "withoutUi": "deny",               // [updated] "deny" | "allow-with-log"
       "thresholds": {
         "blockBlastRadius": 3.0,
         "blockReversible": 0.30,
         "blockUnverifiedCode": 0.80,
         "confirmBlastRadius": 2.0,
+        "confirmIrreversibleBlastRadius": 1.0,   // [updated]
+        "confirmReversibleFloor": 0.75,          // [updated]
+        "confirmRegenerableThreshold": 0.60,     // [updated]
+        "confirmDriftBlastRadius": 1.0,          // [updated]
         "confirmIntentDrift": 0.40,
         "confirmSecrets": 0.60,
         "confirmExfiltration": 0.60,
+        "confirmInstallsSoftware": 0.60,         // [updated]
+        "confirmPrivilegedOrRemote": 0.60,       // [updated]
         "confidenceFloor": 0.50
       },
       "skipTools": ["read", "ls", "grep", "find"],
@@ -540,7 +602,7 @@ Resolution order: built-in defaults → `~/.pi/agent/jev.json` → `.pi/jev.json
     "shield": {
       "enabled": true,
       "shadow": true,
-      "timeoutMs": 1500,
+      "timeoutMs": 3000,
       "injectionThreshold": 0.70,
       "secretThreshold": 0.60,
       "personalDataThreshold": 0.60
@@ -549,6 +611,7 @@ Resolution order: built-in defaults → `~/.pi/agent/jev.json` → `.pi/jev.json
     "prune": {
       "enabled": false,
       "shadow": true,
+      "timeoutMs": 3000,
       "minLines": 150,
       "relevanceThreshold": 0.60
     },
@@ -556,7 +619,7 @@ Resolution order: built-in defaults → `~/.pi/agent/jev.json` → `.pi/jev.json
     "watchdog": {
       "enabled": false,
       "shadow": true,
-      "timeoutMs": 1000,
+      "timeoutMs": 2000,
       "everyNTurns": 3,
       "minTurns": 6,
       "loopThreshold": 0.75,
@@ -574,7 +637,9 @@ Resolution order: built-in defaults → `~/.pi/agent/jev.json` → `.pi/jev.json
 }
 ```
 
-Every threshold in this file appears in exactly one place in the code. That is the point of the file.
+`[updated]` Values marked above are the calibrated defaults; the current, complete
+example is [`../examples/jev.json`](../examples/jev.json). Every threshold in this
+file appears in exactly one place in the code. That is the point of the file.
 
 ## 13. Telemetry, shadow mode and calibration
 
@@ -720,26 +785,47 @@ Client tests cover timeout, abort propagation, cache hit and miss, version inval
 
 Pi is embeddable through its SDK, so integration tests run a real session against a scripted model and assert hook effects: model was switched, tool call was blocked, result content was replaced.
 
+`[updated]` The shipped integration harness runs the real `pi` binary offline
+against a mock OpenAI-compatible model and a mock TypeSafe server
+(`test/pi/run-e2e.mjs`), covering developer load (`-e`), package load
+(`pi install`), and the interactive confirm over RPC. A live variant points at
+the real `api.typesafe.ai` (`test/pi/run-live.mjs`) and at a real model provider
+(`test/pi/run-live-model.mjs`).
+
 ### 17.3 Evaluation fixtures
 
-Two labelled sets live in `fixtures/`, versioned and public.
+Four labelled sets live in `fixtures/`, versioned and public.
 
-**`prompts.jsonl`** — 100 coding prompts, each labelled with the tier a competent engineer would assign. Drawn from public issue trackers so the set is redistributable.
+**`prompts.jsonl`** — 100 coding prompts, each labelled with the tier a competent engineer would assign.
 
-**`commands.jsonl`** — 50 shell commands labelled `safe` / `confirm` / `dangerous`, deliberately weighted toward the grey zone: `git push --force`, `terraform apply`, `kubectl delete`, `curl | sh`, destructive SQL. Trivial cases prove nothing.
+**`commands.jsonl`** — 61 shell commands labelled `safe` / `confirm` / `dangerous`, deliberately weighted toward the grey zone: `git push --force`, `terraform apply`, `kubectl delete`, `curl | sh`, destructive SQL. Trivial cases prove nothing.
+
+**`injections.jsonl`** — 24 tool outputs labelled for prompt injection.
+
+**`gate-real.jsonl`** — `[updated]` 141 commands a real agent actually ran, each paired with the Jev answers it produced and an expert label. It enables offline scoring and threshold sweeps via `tools/score-labels.ts`.
+
+`[updated]` Only `gate-real.jsonl` is drawn from real sessions; the first three remain a
+v0 seed written for the project, and the public-issue-tracker sourcing in this
+section is still pending. See [`../fixtures/README.md`](../fixtures/README.md).
 
 ### 17.4 Acceptance criteria
 
-| Module | Metric | Target for v1 |
-| --- | --- | --- |
-| router | tier accuracy vs labels | ≥ 80% |
-| router | net cost change incl. classification | ≥ 25% reduction |
-| router | added latency p50 | ≤ 600 ms |
-| gate | false negatives on `dangerous` | 0 |
-| gate | false positives on `safe` | ≤ 10% |
-| gate | classified calls hitting cache after warm-up | ≥ 50% |
-| shield | injection detection on synthetic set | ≥ 90% |
-| all | failures that block Pi | 0 |
+| Module | Metric | Target for v1 | Measured |
+| --- | --- | --- | --- |
+| router | tier accuracy vs labels | ≥ 80% | **90–92%** |
+| router | net cost change incl. classification | ≥ 25% reduction | not measured |
+| router | added latency p50 | ≤ 600 ms | 288–673 ms (load-dependent) |
+| gate | false negatives on `dangerous` | 0 | **0/19** |
+| gate | false positives on `safe` | ≤ 10% | **5.0%** (1/20) |
+| gate | classified calls hitting cache after warm-up | ≥ 50% | not measured |
+| shield | injection detection on synthetic set | ≥ 90% | **93.3%** (14/15) |
+| all | failures that block Pi | 0 | **0** |
+
+`[updated]` The measured column is from `tools/evaluate.ts` against the fixtures in
+this repository (real `jev-latest`). The README quotes only these numbers. The gate
+was additionally scored against expert labels over 141 real commands
+(`fixtures/gate-real.jsonl`): 100% confirm recall, 2/124 false positives, zero
+missed dangerous. See [`calibration.md`](calibration.md).
 
 The gate's two error types are reported separately and never averaged. A missed dangerous command and an unnecessary confirmation are not comparable events.
 
@@ -750,6 +836,10 @@ The README will not quote RouteLLM's 85%. Published routing figures are specific
 ## 18. Delivery phases
 
 Each phase has an exit criterion. A phase is not done because the code compiles.
+
+`[updated]` Phases 0–4 are implemented and calibrated; the measured exit numbers
+are in [`../README.md`](../README.md) and [`calibration.md`](calibration.md).
+Phase 5 (publish) is pending.
 
 ### Phase 0 — Skeleton
 
@@ -783,7 +873,7 @@ The experimental pair. Both ship disabled by default.
 
 ### Phase 5 — Release
 
-README with honest numbers from our own fixtures, published as a Pi package installable via `pi install git:github.com/<org>/pi-jev` and npm, plus a short write-up of what the calibration data showed.
+README with honest numbers from our own fixtures, published as a Pi package installable via `pi install git:github.com/riposta/pi-jev` and npm, plus a short write-up of what the calibration data showed.
 
 ### Sequencing note
 
@@ -808,3 +898,33 @@ Phases 1 to 4 are independent after Phase 0. If the router's numbers disappoint,
 - MIT licence, matching Pi.
 - English as the project language, Polish notes kept out of the repository.
 - No published cost-saving figure that did not come from this repository's own fixtures.
+
+### Resolved since this plan `[updated]`
+
+- **#2** — a hand-written `fetch` client (no `ai` dependency); the official
+  `@typesafe-ai/sdk` was noted as a reference but not adopted.
+- **#5** — repository is `github.com/riposta/pi-jev`; package `pi-jev`, MIT.
+- **#7** — partly answered. `is_underspecified` still needs shadow data, but
+  `matches_intent` fires low on read-only exploration with `blast_radius 0`, which
+  is why drift confirmation is now gated on `blast_radius ≥ 1.0`.
+- **#3** (cache hit rate), **#6** (watchdog summaries) and the latency/cost goals
+  remain open.
+
+## 20. Deviations from this plan `[updated]`
+
+A running list; each has a section in [`calibration.md`](calibration.md).
+
+1. Timeouts raised to p95 + margin (calibrated 2500/2000/3000/2000 ms).
+2. Router confidence handling split: a dedicated
+   `reasoningConfidenceFloor`, because a multi-level Score's confidence is not
+   comparable to a Choice's, and the original floor over-escalated 40/48 standard
+   prompts.
+3. Gate rule 4 extended with the irreversible-and-regenerable check.
+4. Gate rule 3 (drift) gated on `blast_radius ≥ 1.0`.
+5. Gate gained three questions (`regenerable`, `installs_software`,
+   `privileged_or_remote`), taking it from six to nine.
+6. The gate reversibility floor moved to 0.75, enabled by `regenerable`.
+7. The speculative `domain` router question is only sent when `skillRouting` is on.
+8. `src/messages.ts`, calibration tools, `fixtures/gate-real.jsonl` and the
+   `test/pi/` harness were added; integration testing uses the CLI/RPC, not the
+   embedded SDK.

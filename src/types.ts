@@ -76,7 +76,7 @@ export type ModuleName = "router" | "gate" | "shield" | "prune" | "watchdog";
 
 /**
  * A request class, not a module. `shield_prune` is the single request shared by
- * shield and prune on `tool_result` (SDD 5.4). Timeouts and budgets are keyed by
+ * shield and prune on `tool_result` (initial_plan.md §5.4). Timeouts and budgets are keyed by
  * this, so it is also what `ask` receives.
  */
 export type HookName = "router" | "gate" | "shield_prune" | "watchdog";
@@ -330,7 +330,7 @@ export interface RedactionConfig {
 export interface TelemetryConfig {
   enabled: boolean;
   dir: string;
-  /** Persist full probability vectors (SDD: required for threshold sweeps). */
+  /** Persist full probability vectors (the initial plan requires full probabilities for threshold sweeps). */
   logProbabilities: boolean;
   logStateHash: boolean;
   /** Off by default: logs hold hashes, not prompts. */
@@ -340,7 +340,7 @@ export interface TelemetryConfig {
 export interface Config {
   apiKeyEnv: string;
   model: string;
-  /** Override for a self-hosted proxy (SDD 15.4). */
+  /** Override for a self-hosted proxy (initial_plan.md §15.4). */
   baseUrl: string;
   budget: BudgetConfig;
   residency: ResidencyConfig;

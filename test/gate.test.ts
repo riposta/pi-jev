@@ -27,7 +27,7 @@ function answers(patch: Partial<GateAnswers> = {}): GateAnswers {
   } as GateAnswers;
 }
 
-describe("gate decision table (SDD 9.4)", () => {
+describe("gate decision table (initial_plan.md §9.4)", () => {
   it("row 1: blocks unverified remote code above 0.80", () => {
     expect(decideGate(answers({ unverified_code: noul(0.81) }), makeConfig())).toMatchObject({ outcome: "block", rule: 1 });
     // boundary: exactly 0.80 is not above

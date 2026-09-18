@@ -1,6 +1,6 @@
 /**
  * tools/replay.ts — re-run recorded states against the current questions
- * (SDD 13.4).
+ * (initial_plan.md §13.4).
  *
  * Requires `telemetry.logStateContent: true`, which is off by default for good
  * reason. This is how a question edit is evaluated without waiting for new

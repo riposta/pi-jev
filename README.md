@@ -143,7 +143,7 @@ Environment overrides: `PI_JEV_MODEL`, `PI_JEV_BASE_URL`, `PI_JEV_API_KEY_ENV`,
 Timeouts are per request class and configurable
 (`PI_JEV_<MODULE>_TIMEOUT_MS`): `router` 2500 ms, `gate` 2000 ms,
 `shield`+`prune` 3000 ms, `watchdog` 2000 ms. These are the calibrated defaults;
-the SDD's original 800/400/1500/1000 ms measured below the real p50/p95 and made
+the initial plan's original 800/400/1500/1000 ms measured below the real p50/p95 and made
 the hooks fail open (see [Calibration notes](#calibration-notes)). On expiry, a
 missing key, a `401`, or a budget breach the client returns `null` and the module
 fails **open** — Pi behaves exactly as if the extension were not installed.
@@ -208,7 +208,7 @@ node --experimental-strip-types tools/labels.ts .pi/jev-log --sweep confirmBlast
 `labels` prints allow/deny totals, the deny rate per decision-table rule and the
 commands you denied. With `--sweep` it replays the recorded answers and shows how
 the deny rate moves as a threshold changes. Target 300+ gate decisions before
-touching the numbers (SDD 13.3). Nothing is blocked while `allowBlock` is false.
+touching the numbers (initial_plan.md §13.3). Nothing is blocked while `allowBlock` is false.
 
 ## Commands
 
@@ -339,7 +339,7 @@ Fixtures live in [`fixtures/`](fixtures/): 100 labelled prompts, 61 labelled
 commands weighted toward the grey zone, 24 synthetic injection cases, and 141
 real commands labelled by the maintainer agent with the answers Jev produced.
 
-> The fixture sets are a v0 seed except `gate-real.jsonl`. The SDD calls for
+> The fixture sets are a v0 seed except `gate-real.jsonl`. The initial plan calls for
 > prompts drawn from public issue trackers; that sourcing is still pending. Treat
 > the numbers as a smoke signal, not the published figure.
 
@@ -348,7 +348,7 @@ real commands labelled by the maintainer agent with the answers Jev produced.
 The first real run against `jev-latest` required three changes, all applied to
 the defaults in this repository:
 
-1. **Confidence floors were miscalibrated.** The SDD applies one floor to every
+1. **Confidence floors were miscalibrated.** The initial plan applies one floor to every
    answer, but a multi-level Score spreads probability, so `reasoning_needed`
    confidence is naturally much lower than a Choice's. With the original 0.55
    floor, 40 of 48 `standard` prompts were escalated to `strong`. Added a
@@ -359,19 +359,19 @@ the defaults in this repository:
    with `confirmIrreversibleBlastRadius: 1.0` + `confirmReversibleFloor: 0.7`:
    *not cleanly reversible and beyond scratch files → confirm*. On the fixtures
    this catches all 19 dangerous commands and 0 safe ones.
-3. **The SDD timeouts were below real latency.** Measured p50 673 ms / p95
+3. **The initial plan timeouts were below real latency.** Measured p50 673 ms / p95
    1752 ms for a single `api.typesafe.ai` call, against budgets of 400–800 ms.
    The three-strike rule then disabled hooks, making the layer inert. Defaults
    raised to p95 + margin.
 4. **The speculative `domain` question was pure cost by default.** It is only
    read when `router.skillRouting` is on, so it is now only sent in that case
-   (SDD 8.2); this cuts ~18% of router input tokens. Router latency is
+   (initial_plan.md §8.2); this cuts ~18% of router input tokens. Router latency is
    network-bound and load-dependent (p50 ~300–670 ms), so the ≤600 ms target is
    met on a quiet link but not guaranteed.
 5. **Drift confirmed on read-only exploration.** In a real-session sample, three
    ordinary exploration commands (`cat package.json`, `find …`) scored
    `matches_intent` 0.23–0.29 and so triggered the drift confirm, even though
-   their blast radius was 0. The SDD's drift example is mutating, so rule 3 is
+   their blast radius was 0. The initial plan's drift example is mutating, so rule 3 is
    now gated on `blast_radius ≥ 1.0` (`confirmDriftBlastRadius`): read-only
    detours no longer confirm, mutating ones still do. Safe-local false confirms
    went from 3/9 to 0/9, and to **0/24 on a 141-decision sample**. That larger
@@ -384,7 +384,8 @@ the defaults in this repository:
    question, `regenerable`, and made the irreversible confirm require
    `regenerable < 0.6`. On the 141-decision sample confirms went 18 → 14 with the
    four build/repack confirms suppressed and every destructive/secret confirm
-   kept. This is an addition to the SDD 9.3 question list, made per SDD 7.2
+   kept. This is an addition to the [initial_plan.md §9.3](docs/initial_plan.md)
+   question list, made per §7.2
    (split an ambiguous judgment into atomic questions); acceptance was unchanged.
 7. **Expert labels over the real commands.** The 141 captured commands were
    labelled `safe`/`confirm`/`dangerous` and stored with Jev's answers as
@@ -397,8 +398,9 @@ the defaults in this repository:
    remaining missed confirms (`ssh`, `sudo`, global installs) needed two more
    questions, not a threshold: `installs_software` and `privileged_or_remote`
    measured 0.99 and 0.98/0.89 with no safe command above 0.22/0.05, lifting
-   recall to 100% at 89.5% precision. The gate now asks nine questions where SDD
-   9.3 listed six, each addition forced by labelled evidence.
+   recall to 100% at 89.5% precision. The gate now asks nine questions where
+   [`initial_plan.md` §9.3](docs/initial_plan.md) listed six, each addition
+   forced by labelled evidence.
 
 Each is a number change or a config-driven rule; none rewrote a prompt. Re-run
 `sweep.ts` and `evaluate.ts` after any `questions.ts` or threshold edit.
@@ -410,7 +412,7 @@ src/            index, config, questions, client, redact, telemetry, types, modu
 tools/          calibrate.ts, replay.ts, evaluate.ts, sweep.ts, labels.ts, score-labels.ts
 fixtures/       prompts.jsonl, commands.jsonl, injections.jsonl
 examples/       jev.json
-docs/           SDD.md, calibration.md
+docs/           initial_plan.md, calibration.md
 test/           unit, client integration, and index wiring tests
 test/pi/        real-Pi end-to-end harness (mock model + mock Jev servers)
 ```

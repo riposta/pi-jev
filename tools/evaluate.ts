@@ -1,8 +1,8 @@
 /**
  * tools/evaluate.ts — run the labelled fixtures against Jev and report the
- * acceptance metrics from SDD 17.4.
+ * acceptance metrics from initial_plan.md §17.4.
  *
- * These numbers are the only ones the README may quote (SDD 17.5). The fixtures
+ * These numbers are the only ones the README may quote (initial_plan.md §17.5). The fixtures
  * live in the repository so anyone can re-run them.
  *
  * Usage:

@@ -3,10 +3,10 @@
  *
  * This file contains no decision logic. It loads config, builds the client,
  * redactor and telemetry singletons, and wires modules to hooks. Modules never
- * import each other; shared state goes through `deps` (SDD 5.2).
+ * import each other; shared state goes through `deps` (initial_plan.md §5.2).
  *
  * One deliberate deviation from the per-module `register` sketch: shield and
- * prune share a single tool_result request (SDD 5.4), so index.ts owns that one
+ * prune share a single tool_result request (initial_plan.md §5.4), so index.ts owns that one
  * pipeline and dispatches to both modules' pure evaluators. That keeps the
  * "one request per hook" rule and the "modules never import each other" rule
  * true at the same time.
@@ -86,7 +86,7 @@ export default function piJev(pi: ExtensionAPI): void {
   };
 
   /* ---------------------------------------------------------------------- */
-  /* Durable, LLM-free transcript entries (SDD 13.5)                        */
+  /* Durable, LLM-free transcript entries (initial_plan.md §13.5)                        */
   /* ---------------------------------------------------------------------- */
 
   pi.registerEntryRenderer<TelemetryRecord>("jev-decision", (entry, options, theme) => {
@@ -185,7 +185,7 @@ export default function piJev(pi: ExtensionAPI): void {
   registerToolResultPipeline(pi, deps);
 
   /* ---------------------------------------------------------------------- */
-  /* Commands (SDD 14)                                                      */
+  /* Commands (initial_plan.md §14)                                                      */
   /* ---------------------------------------------------------------------- */
 
   pi.registerCommand("jev", {
@@ -256,7 +256,7 @@ export default function piJev(pi: ExtensionAPI): void {
 }
 
 /* -------------------------------------------------------------------------- */
-/* Shared tool_result pipeline: shield + prune, one request (SDD 5.4)         */
+/* Shared tool_result pipeline: shield + prune, one request (initial_plan.md §5.4)         */
 /* -------------------------------------------------------------------------- */
 
 function registerToolResultPipeline(pi: ExtensionAPI, deps: Deps): void {

@@ -3,7 +3,7 @@
  *
  * Everything else receives `ask` through `Deps`. A `null` return is the single
  * failure signal; modules branch on it once into their fail-open path. The
- * client never throws into a hook handler (SDD 6.1).
+ * client never throws into a hook handler (initial_plan.md §6.1).
  */
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -218,7 +218,7 @@ export function createClient(deps: ClientDeps): Client {
       const raw = readFile(cachePath);
       parsed = raw ? JSON.parse(raw) : undefined;
     } catch {
-      // Corrupt cache: discard and rebuild silently (SDD 16).
+      // Corrupt cache: discard and rebuild silently (initial_plan.md §16).
       parsed = undefined;
     }
     if (
@@ -461,7 +461,7 @@ export function createClient(deps: ClientDeps): Client {
       return (await existing) as { answers: Answers<Q>; meta: ReturnType<typeof makeMeta> } | null;
     }
 
-    // On-disk command cache, gate only (SDD 6.3).
+    // On-disk command cache, gate only (initial_plan.md §6.3).
     let diskKey: string | undefined;
     if (hook === "gate" && config.modules.gate.diskCache && opts.cacheKey) {
       diskKey = `gate:${opts.cacheKey}`;

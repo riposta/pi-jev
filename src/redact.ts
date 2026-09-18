@@ -2,7 +2,7 @@
  * redact.ts — deterministic, pattern-based scrubbing applied before anything
  * leaves the machine.
  *
- * This is deliberately over-eager (SDD 15.2). Losing a little classification
+ * This is deliberately over-eager (initial_plan.md §15.2). Losing a little classification
  * accuracy is the correct trade against leaking a credential. The known
  * limitation is that shield exists to catch secrets patterns miss, but content
  * must reach Jev to be classified; patterns reduce exposure, they do not

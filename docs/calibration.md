@@ -20,14 +20,14 @@ Decision mix (tuned table, replaying the recorded answers offline):
 
 | | would confirm | safe-local false confirms |
 | --- | --- | --- |
-| SDD table (drift on any blast radius) | 4 / 15 | 3 / 9 |
+| initial plan table (drift on any blast radius) | 4 / 15 | 3 / 9 |
 | `confirmDriftBlastRadius: 1.0` | 1 / 15 | 0 / 9 |
 
 The three false confirms were `cat package.json`, `find test src` and
 `find src test`, each with `blast_radius = 0`, `reversible ≥ 0.88` and
 `matches_intent` of 0.23–0.29. They are ordinary read-only exploration of a task
 that explicitly asked to list and read files, yet Jev scored intent low because
-they do not directly *fulfil* the request. The SDD's motivating drift example is
+they do not directly *fulfil* the request. The initial plan's motivating drift example is
 mutating (editing the CI pipeline while asked to fix a test), so rule 3 is now
 gated on `blast_radius ≥ 1.0` via the new `confirmDriftBlastRadius`. A read-only
 detour is no longer a confirm; a mutating detour still is.
@@ -59,7 +59,7 @@ tasks, consistent with the fixture-level accuracy.
 ### Caveats
 
 Small sample (15 gate decisions), one scratch project, prompts written by us.
-This is the shape of a calibration loop, not the 300+ decisions the SDD asks for
+This is the shape of a calibration loop, not the 300+ decisions the initial plan asks for
 before promoting the gate. Re-run with `tools/calibrate.ts` and
 `tools/sweep.ts` as more data accumulates.
 
@@ -113,8 +113,8 @@ written conflates "writes artefacts a build can recreate" with "discards work".
 refresh artefacts a build or fetch can recreate, without destroying unique work
 or data?* Rule 4 now also requires `regenerable < confirmRegenerableThreshold`
 (default 0.6), so a command that merely rebuilds does not confirm, while one that
-destroys work still does. This is a deliberate addition to the SDD 9.3 question
-list, done per SDD 7.2 (split an ambiguous judgment into atomic questions)
+destroys work still does. This is a deliberate addition to the initial_plan.md §9.3 question
+list, done per initial_plan.md §7.2 (split an ambiguous judgment into atomic questions)
 because no number could express it.
 
 **Validation.** Asked Jev `regenerable` for all 141 recorded commands and
@@ -145,7 +145,7 @@ working-file operations, which rule 4 deliberately allows; the risky axis is
 `blast ≥ 1`, not reversibility alone.
 
 **Caveats.** Same as above, now with a larger but still single-style sample. No
-`block` rows fired. The SDD's 300+ target for promoting `confirm` is not met; the
+`block` rows fired. The initial plan's 300+ target for promoting `confirm` is not met; the
 next step is labelled data, which is why the gate stays in shadow.
 
 ## Collecting labels for the next pass
@@ -223,7 +223,7 @@ were probed against all 141 recorded commands before choosing:
 | `installs_software` | 0.99 | — | — | 0 (max 0.22) |
 | `privileged_or_remote` | — | 0.89 | 0.98 | 0 (max 0.05) |
 
-Two atomic questions won over one composite, per SDD 7.2. Added
+Two atomic questions won over one composite, per initial_plan.md §7.2. Added
 `installs_software` and `privileged_or_remote` (Noul) with
 `confirmInstallsSoftware` and `confirmPrivilegedOrRemote` at 0.6, wired into the
 row 5 trust condition alongside secrets and exfiltration.
@@ -240,7 +240,7 @@ Re-scoring `fixtures/gate-real.jsonl` (now carrying the new answers too):
 **Acceptance re-run:** router 92.0% (92/100), gate 0/19 false negatives, 5.0%
 (1/20) false positives, shield 93.3%.
 
-The gate now asks nine questions where SDD 9.3 listed six. Each addition was
+The gate now asks nine questions where initial_plan.md §9.3 listed six. Each addition was
 forced by labelled evidence that no threshold could express the distinction, and
 each is recorded here; the cost is three more questions' tokens on every gate
 request.

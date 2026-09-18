@@ -1,5 +1,5 @@
 /**
- * tools/calibrate.ts — threshold sweep over a log file (SDD 13.3).
+ * tools/calibrate.ts — threshold sweep over a log file (initial_plan.md §13.3).
  *
  * Reads JSONL records (which include full probability vectors by default) and
  * recomputes decisions with one threshold overridden at a time. Where labels

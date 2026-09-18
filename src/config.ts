@@ -1,7 +1,7 @@
 /**
  * config.ts — schema, defaults, resolution and validation.
  *
- * Resolution order (SDD 12): built-in defaults -> ~/.pi/agent/jev.json ->
+ * Resolution order (initial_plan.md §12): built-in defaults -> ~/.pi/agent/jev.json ->
  * .pi/jev.json (only when the project is trusted) -> environment overrides.
  *
  * An invalid file raises `ConfigError`, which index.ts turns into "the
@@ -30,7 +30,7 @@ export class ConfigError extends Error {
   }
 }
 
-/** Read-only shell commands that never need classification (SDD 6.4). */
+/** Read-only shell commands that never need classification (initial_plan.md §6.4). */
 export const DEFAULT_SKIP_COMMANDS: readonly string[] = [
   "git status",
   "git diff",
@@ -83,7 +83,7 @@ function defaultRouter(): RouterConfig {
   return {
     enabled: true,
     shadow: true,
-    // Defaults raised from the SDD's 800 ms after calibration: measured
+    // Defaults raised from the initial plan's 800 ms after calibration: measured
     // api.typesafe.ai latency here was p50 673 ms / p95 1752 ms, so 800 ms
     // timed out on most calls and the three-strike rule disabled the hook.
     timeoutMs: 2500,

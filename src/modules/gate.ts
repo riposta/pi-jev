@@ -6,7 +6,7 @@
  *
  * Including the original user request in the state is the design choice that
  * distinguishes this from every regex-based gate: it makes drift detectable
- * (SDD 9.2, 9.6).
+ * (initial_plan.md §9.2, 9.6).
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -19,7 +19,7 @@ import { formatStatus } from "../telemetry.ts";
 export type GateAnswers = Answers<typeof GATE_QUESTIONS>;
 
 /* -------------------------------------------------------------------------- */
-/* Pre-flight skips (SDD 6.4)                                                 */
+/* Pre-flight skips (initial_plan.md §6.4)                                                 */
 /* -------------------------------------------------------------------------- */
 
 const SHELL_OPERATORS = /[|&;<>`$()\n]/;
@@ -79,7 +79,7 @@ export interface GateState {
 }
 
 /* -------------------------------------------------------------------------- */
-/* Decision (SDD 9.4)                                                         */
+/* Decision (initial_plan.md §9.4)                                                         */
 /* -------------------------------------------------------------------------- */
 
 export function decideGate(answers: GateAnswers, config: Config): GateDecision {
@@ -125,7 +125,7 @@ export function decideGate(answers: GateAnswers, config: Config): GateDecision {
   if (blast >= t.confirmBlastRadius) {
     return { outcome: "confirm", rule: 4, reason: `blast radius ${blast.toFixed(1)}/3`, numbers };
   }
-  // Added after the first calibration run (SDD 13.3): a command that is not
+  // Added after the first calibration run (initial_plan.md §13.3): a command that is not
   // cleanly reversible and reaches beyond the files being worked on is worth a
   // look even below the shared-resource line — unless it only refreshes
   // regenerable artefacts (a build or a repack), which is friction, not risk.
@@ -225,7 +225,7 @@ export function register(pi: ExtensionAPI, deps: Deps): void {
         enforced = ok ? "allow" : "block";
         if (!ok) blockReason = `blocked by user: ${computed.reason}`;
       } else {
-        // print/json mode: no prompts (SDD 14, mode behaviour).
+        // print/json mode: no prompts (initial_plan.md §14, mode behaviour).
         userChoice = "unknown";
         if (config.withoutUi === "deny") {
           enforced = "block";
@@ -289,7 +289,7 @@ function failOpen(deps: Deps, ctx: ExtensionContext, tool: string, command: stri
   return;
 }
 
-/** The auditable prompt: the reason and the driving number (SDD 9.5). */
+/** The auditable prompt: the reason and the driving number (initial_plan.md §9.5). */
 export function confirmMessage(decision: GateDecision, command: string): string {
   return `${decision.reason}\n  ${command.split("\n")[0]}\nAllow?`;
 }

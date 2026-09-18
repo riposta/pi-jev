@@ -1,13 +1,13 @@
 /**
  * Module: shield.
  *
- * Hook: `tool_result`, sharing one request with prune (SDD 5.4). Replaces tool
+ * Hook: `tool_result`, sharing one request with prune (initial_plan.md §5.4). Replaces tool
  * output that carries instructions aimed at the model, and masks secrets and
  * personal data before they enter the context window or the session file.
  *
  * The ordering problem is explicit: content must reach Jev to be classified, so
  * shield cannot prevent the first exposure to TypeSafe. redact.ts runs first;
- * shield catches what patterns miss (SDD 10.3, 15.2).
+ * shield catches what patterns miss (initial_plan.md §10.3, 15.2).
  */
 
 import type { Answers, Config, RedactFn, ShieldDecision } from "../types.ts";
@@ -53,7 +53,7 @@ export function maskContent(
 }
 
 /* -------------------------------------------------------------------------- */
-/* Sampling (SDD 10.1)                                                        */
+/* Sampling (initial_plan.md §10.1)                                                        */
 /* -------------------------------------------------------------------------- */
 
 export interface SampledOutput {

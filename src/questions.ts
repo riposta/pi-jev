@@ -3,7 +3,7 @@
  *
  * Every judgement pi-jev makes about a session is defined here, and nowhere
  * else. This file plus config.ts is the complete set of things a reviewer must
- * read to understand what the layer believes. Rules for this file (SDD 7.1):
+ * read to understand what the layer believes. Rules for this file (initial_plan.md §7.1):
  *
  *  - Every question carries a comment giving its rationale and the failure it
  *    prevents.
@@ -13,7 +13,7 @@
  *  - Changing anything here changes QUESTIONS_VERSION, which invalidates every
  *    cache and marks log records as a different generation.
  *
- * Writing style (SDD 7.2): one judgement a knowledgeable person makes in a
+ * Writing style (initial_plan.md §7.2): one judgement a knowledgeable person makes in a
  * second. If a decision depends on several independent factors, each factor
  * gets its own question and the weights live in config.ts.
  */
@@ -78,7 +78,7 @@ export const ROUTER_QUESTIONS = {
   } as const,
 
   /**
-   * The one unproven router signal (SDD 8.4). A false positive costs one
+   * The one unproven router signal (initial_plan.md §8.4). A false positive costs one
    * clarifying question; a false negative is the status quo. Noul because the
    * action is `if`.
    */
@@ -137,7 +137,7 @@ export const ROUTER_QUESTIONS = {
  * Router questions for the default path: everything except the speculative
  * `domain`. `domain` is only read when `router.skillRouting` is enabled, so
  * including it by default would pay its tokens for an answer no code path
- * reads (SDD 8.2). The state and the single-request shape are unchanged.
+ * reads (initial_plan.md §8.2). The state and the single-request shape are unchanged.
  */
 export const ROUTER_QUESTIONS_CORE = {
   task_type: ROUTER_QUESTIONS.task_type,
@@ -245,7 +245,7 @@ export const GATE_QUESTIONS = {
   } as const,
 
   /**
-   * Drift detection (SDD 9.6). Safe in isolation but outside the original
+   * Drift detection (initial_plan.md §9.6). Safe in isolation but outside the original
    * request: editing CI while asked to fix a test. This is the signal a proxy
    * cannot compute, because only the harness has `user_request`.
    */
@@ -309,7 +309,7 @@ export const SHIELD_QUESTIONS = {
 
   /**
    * Secrets that pattern redaction missed. Since the content has already
-   * reached Jev, this cannot prevent first exposure (SDD 10.3) — it prevents
+   * reached Jev, this cannot prevent first exposure (initial_plan.md §10.3) — it prevents
    * the secret entering the context window and the session file.
    */
   has_secret: {
@@ -350,7 +350,7 @@ export const PRUNE_QUESTIONS = {
 /**
  * Shared by shield and prune. `none` is expected for the overwhelming majority
  * of results; `flaky` and `env_problem` occasionally save a debugging detour
- * (SDD 10.5). Speculative and cheap.
+ * (initial_plan.md §10.5). Speculative and cheap.
  */
 export const FAILURE_TYPE_QUESTION = {
   failure_type: {
@@ -387,7 +387,7 @@ export const WATCHDOG_QUESTIONS = {
   } as const,
 
   /**
-   * The most expensive failure mode in agentic coding (SDD 11.4). Noul because
+   * The most expensive failure mode in agentic coding (initial_plan.md §11.4). Noul because
    * the response is `if`. Above threshold injects advice; it never aborts.
    */
   looping: {

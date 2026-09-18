@@ -3,7 +3,7 @@
  *
  * Hook: `turn_end`, every Nth turn after a warm-up. Risk: low — it only injects
  * advice. It never aborts: a false positive would destroy work in progress
- * (SDD 11.3).
+ * (initial_plan.md §11.3).
  *
  * An agent looping on the same error is the most expensive failure mode in
  * agentic coding. Catching it at turn 9 instead of turn 30 is worth more than

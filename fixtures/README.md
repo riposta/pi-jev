@@ -13,7 +13,7 @@ re-runnable; none of it was produced by a vendor benchmark.
 ## Provenance and status
 
 - `prompts.jsonl`, `commands.jsonl` and `injections.jsonl` are a **v0 seed written
-  for this project**. The SDD calls for prompts drawn from public issue trackers;
+  for this project**. The initial plan calls for prompts drawn from public issue trackers;
   that sourcing is still pending.
 - `gate-real.jsonl` was captured from real sessions (`deepseek-v4-pro` + real
   `api.typesafe.ai`) and labelled by the repository's maintainer agent acting as

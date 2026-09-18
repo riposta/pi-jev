@@ -4,7 +4,7 @@
  *
  * One record per classification, written to `<dir>/YYYY-MM-DD.jsonl`. Full
  * probability vectors are kept by default: without them threshold sweeping is
- * impossible (SDD 13.1). `logStateContent` is off by default, so the log holds
+ * impossible (initial_plan.md §13.1). `logStateContent` is off by default, so the log holds
  * hashes rather than prompts.
  */
 

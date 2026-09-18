@@ -1,13 +1,13 @@
 /**
  * Module: prune.
  *
- * Hook: `tool_result`, sharing one request with shield (SDD 5.4). Replaces a
+ * Hook: `tool_result`, sharing one request with shield (initial_plan.md §5.4). Replaces a
  * low-relevance result with a short summary and a pointer to the full output on
  * disk.
  *
  * Pruning is off by default even outside shadow mode. It is the module most
  * likely to remove something the agent needed, and its benefit is measured in
- * tokens rather than correctness (SDD 10.4).
+ * tokens rather than correctness (initial_plan.md §10.4).
  */
 
 import { writeFileSync } from "node:fs";
@@ -47,7 +47,7 @@ export function pruneOutput(raw: string, toolCallId: string, dir: string = tmpdi
   return { path, notice };
 }
 
-/** The injected suggestion for a detected failure type (SDD 10.5). */
+/** The injected suggestion for a detected failure type (initial_plan.md §10.5). */
 export function failureSuggestion(
   answers: Answers<typeof FAILURE_TYPE_QUESTION>,
 ): string | null {

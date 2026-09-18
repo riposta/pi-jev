@@ -2,7 +2,7 @@
  * messages.ts — small, dependency-free helpers for reading Pi messages.
  *
  * Watchdog summaries are built locally from tool names, file paths and error
- * lines. No second LLM call is made to produce them (SDD 11.1). Router uses the
+ * lines. No second LLM call is made to produce them (initial_plan.md §11.1). Router uses the
  * same helpers to keep a one-line memory of the previous turn.
  */
 
