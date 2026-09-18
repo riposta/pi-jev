@@ -46,6 +46,7 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:pi": "node test/pi/run-e2e.mjs",
+    "test:pi:live": "node test/pi/run-live.mjs",
     "test:all": "vitest run && node test/pi/run-e2e.mjs",
     "typecheck": "tsc --noEmit",
     "calibrate": "node --experimental-strip-types tools/calibrate.ts",

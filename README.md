@@ -274,6 +274,13 @@ A live smoke test runs only when `TYPESAFE_API_KEY` is set:
 TYPESAFE_API_KEY=... npm test -- test/live.test.ts
 ```
 
+There is also a full live Pi run — a real `pi` session whose classification
+calls go to the real `api.typesafe.ai` (only the LLM is scripted):
+
+```bash
+TYPESAFE_API_KEY=... npm run test:pi:live
+```
+
 ## Evaluation and calibration
 
 ```bash
