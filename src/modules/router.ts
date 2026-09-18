@@ -271,6 +271,15 @@ export function register(pi: ExtensionAPI, deps: Deps): void {
   const recentFiles: string[] = [];
   let previousTurn = "";
   let warnedMissingModel = false;
+  // The full tool loadout captured before the router ever narrows it, so a
+  // later write-capable prompt can restore it. Without this the session stayed
+  // read-only after a single read-only classification.
+  let allTools: string[] | undefined;
+
+  pi.on("session_start", () => {
+    allTools = undefined;
+    warnedMissingModel = false;
+  });
 
   pi.on("tool_call", (event) => {
     if (
@@ -292,6 +301,9 @@ export function register(pi: ExtensionAPI, deps: Deps): void {
 
   pi.on("before_agent_start", async (event, ctx) => {
     if (!deps.config.modules.router.enabled || !deps.state.layerEnabled) return;
+
+    // Capture the full loadout before any narrowing happens this session.
+    allTools ??= pi.getActiveTools();
 
     // Pi owns the list of usable models. Send the real list to Jev so the
     // classifier picks a model this machine actually has, instead of a tier
@@ -367,7 +379,7 @@ export function register(pi: ExtensionAPI, deps: Deps): void {
 
     if (shadow) return;
 
-    const missing = await applyDecision(pi, ctx, decision, deps.config);
+    const missing = await applyDecision(pi, ctx, decision, deps.config, allTools);
     if (missing && !warnedMissingModel) {
       warnedMissingModel = true;
       ctx.ui.notify(
@@ -393,6 +405,7 @@ export async function applyDecision(
   ctx: ExtensionContext,
   decision: RouterDecision,
   config: Config,
+  fullTools?: readonly string[],
 ): Promise<string | undefined> {
   const target = decision.chosenModel ?? modelForTier(config, decision.tier);
   const model = ctx.modelRegistry.find(target.provider, target.model);
@@ -407,7 +420,10 @@ export async function applyDecision(
     missing = `${target.provider}/${target.model}`;
   }
   pi.setThinkingLevel(decision.thinking);
+  // Restore the captured loadout when this prompt is write-capable. Narrowing
+  // only (the previous behaviour) left the session stuck on read-only tools.
   if (decision.readOnly) pi.setActiveTools([...READ_ONLY_TOOLS]);
+  else if (fullTools && fullTools.length > 0) pi.setActiveTools([...fullTools]);
   return missing;
 }
 

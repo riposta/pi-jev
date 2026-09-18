@@ -22,6 +22,7 @@ function fakePi() {
     sendMessage: [] as Array<{ message: any; options: any }>,
     appendEntry: [] as Array<{ customType: string; data: any }>,
   };
+  let activeTools = ["read", "write", "edit", "bash", "ls", "grep", "find"];
   const pi = {
     on(event: string, handler: Handler) {
       const list = handlers.get(event) ?? [];
@@ -37,7 +38,11 @@ function fakePi() {
       return true;
     },
     setThinkingLevel: (level: string) => calls.setThinkingLevel.push(level),
-    setActiveTools: (tools: string[]) => calls.setActiveTools.push(tools),
+    getActiveTools: () => [...activeTools],
+    setActiveTools: (tools: string[]) => {
+      activeTools = [...tools];
+      calls.setActiveTools.push(tools);
+    },
     sendMessage: (message: any, options: any) => calls.sendMessage.push({ message, options }),
     appendEntry: (customType: string, data: any) => calls.appendEntry.push({ customType, data }),
     exec: async () => ({ stdout: "", stderr: "", code: 0, killed: false }),
@@ -168,6 +173,25 @@ describe("index wiring", () => {
     await harness.commands.get("jev")!("shadow router off", ctx);
     await emit(harness.handlers, "before_agent_start", { prompt: "add a feature", systemPrompt: "SYS" }, ctx);
     expect(harness.calls.setModel).toHaveLength(0);
+  });
+
+  it("restores the full tool loadout on a later write-capable prompt", async () => {
+    const { harness, ctx } = await boot();
+    await harness.commands.get("jev")!("shadow router off", ctx);
+    mock.setAnswers({ ...ROUTER_ANSWERS, needs_write_tools: noul(0.05) });
+    await emit(harness.handlers, "before_agent_start", { prompt: "explain this code", systemPrompt: "SYS" }, ctx);
+    expect(harness.calls.setActiveTools[0]).toEqual(["read", "ls", "grep", "find"]);
+    mock.setAnswers({ ...ROUTER_ANSWERS, needs_write_tools: noul(0.95) });
+    await emit(harness.handlers, "before_agent_start", { prompt: "fix the bug", systemPrompt: "SYS" }, ctx);
+    expect(harness.calls.setActiveTools.at(-1)).toEqual([
+      "read",
+      "write",
+      "edit",
+      "bash",
+      "ls",
+      "grep",
+      "find",
+    ]);
   });
 
   it("warns instead of silently keeping the model when the tier model is missing", async () => {
