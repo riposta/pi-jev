@@ -20,6 +20,7 @@
 
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
+import type { QuestionSet } from "./types.ts";
 
 /* -------------------------------------------------------------------------- */
 /* router — once per user prompt                                              */
@@ -147,6 +148,38 @@ export const ROUTER_QUESTIONS_CORE = {
   needs_write_tools: ROUTER_QUESTIONS.needs_write_tools,
   touches_sensitive: ROUTER_QUESTIONS.touches_sensitive,
 } as const;
+
+/**
+ * One option in the model Choice. The `key` is a stable, API-safe handle
+ * (`m0`, `m1`, …); the human-readable provider/model id lives in the
+ * description. The router maps the answer back through the same ordered list.
+ */
+export interface ModelOption {
+  key: string;
+  description: string;
+}
+
+/**
+ * The router question set with a Choice over the models Pi actually has
+ * available. The question and its rationale stay in this file (the review
+ * surface); only the option list is supplied at runtime, because the right
+ * model names differ per user and change monthly (initial_plan.md §8.1).
+ *
+ * Returns the base set unchanged when Pi reports no models, so the router falls
+ * back to the config-declared tiers.
+ */
+export function withModelChoice(base: QuestionSet, models: readonly ModelOption[]): QuestionSet {
+  if (models.length === 0) return base;
+  return {
+    ...base,
+    target_model: {
+      type: "choice",
+      instructions:
+        "Which of `available_models` should handle `prompt`? Match the model to the task: prefer the cheapest model that can do the work, and reserve the strongest for reasoning-heavy or architecture work.",
+      criteria: Object.fromEntries(models.map((model) => [model.key, model.description])),
+    },
+  };
+}
 
 /* -------------------------------------------------------------------------- */
 /* gate — once per classified tool call                                       */

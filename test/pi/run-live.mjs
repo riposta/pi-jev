@@ -79,6 +79,8 @@ const run = (args, timeoutMs = 60_000) =>
       cwd,
       env: {
         ...process.env,
+        // Isolate from the developer's own ~/.pi/agent/jev.json.
+        HOME: agent,
         PI_OFFLINE: "1",
         PI_CODING_AGENT_DIR: agent,
         PI_JEV_BASE_URL: baseUrl,

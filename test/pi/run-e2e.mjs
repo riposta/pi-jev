@@ -250,6 +250,10 @@ try {
 
   const env = {
     ...process.env,
+    // Isolate the run from the developer's own Pi and pi-jev config:
+    // loadConfig resolves ~/.pi/agent/jev.json through HOME, so without this
+    // the test would inherit a live router from the user's machine.
+    HOME: agent,
     PI_OFFLINE: "1",
     PI_CODING_AGENT_DIR: agent,
     TYPESAFE_API_KEY: "test-key",

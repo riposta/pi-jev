@@ -145,6 +145,12 @@ export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhi
 export interface RouterDecision {
   tier: TierName;
   thinking: ThinkingLevel;
+  /**
+   * Concrete model the classifier picked from Pi's available list. Absent when
+   * the classifier did not choose (older answer shape, offline fixtures, or a
+   * residency override), in which case the tier's configured model is used.
+   */
+  chosenModel?: { provider: string; model: string };
   /** Restrict the tool loadout to read-only tools for this run. */
   readOnly: boolean;
   /** Append the clarify directive to the system prompt. */

@@ -1,6 +1,36 @@
 import { describe, expect, it } from "vitest";
-import { decideRouter, restrictToAllowed, thinkingFor, type RouterAnswers } from "../src/modules/router.ts";
+import {
+  availableModels,
+  decideRouter,
+  describeModel,
+  isAllowedModel,
+  modelForTier,
+  resolveChosenModel,
+  restrictToAllowed,
+  thinkingFor,
+  type ModelInfo,
+  type RouterAnswers,
+} from "../src/modules/router.ts";
 import { choice, makeConfig, noul, score } from "./helpers.ts";
+
+const DEEPSEEK_MODELS: ModelInfo[] = [
+  { provider: "deepseek", id: "deepseek-flash", name: "Flash", reasoning: false, contextWindow: 64_000 },
+  { provider: "deepseek", id: "deepseek-v4-pro", name: "Pro", reasoning: true, contextWindow: 128_000 },
+];
+
+function deepseekTiers() {
+  return {
+    modules: {
+      router: {
+        tiers: {
+          cheap: { provider: "deepseek", model: "deepseek-flash", thinking: "off" as const },
+          standard: { provider: "deepseek", model: "deepseek-v4-pro", thinking: "low" as const },
+          strong: { provider: "deepseek", model: "deepseek-v4-pro", thinking: "high" as const },
+        },
+      },
+    },
+  };
+}
 
 function answers(patch: Partial<RouterAnswers> = {}): RouterAnswers {
   return {
@@ -105,5 +135,94 @@ describe("router helpers", () => {
     expect(restrictToAllowed("strong", config, ["claude-sonnet-5"])).toEqual({ tier: "standard", restricted: true });
     expect(restrictToAllowed("strong", config, ["claude-haiku-4-5"])).toEqual({ tier: "cheap", restricted: true });
     expect(restrictToAllowed("strong", config, ["claude-opus-5"])).toEqual({ tier: "strong", restricted: false });
+  });
+});
+
+describe("available models from Pi", () => {
+  it("reads the list from the registry", () => {
+    const ctx = {
+      modelRegistry: { getAvailable: () => DEEPSEEK_MODELS },
+    } as unknown as Parameters<typeof availableModels>[0];
+    expect(availableModels(ctx)).toEqual(DEEPSEEK_MODELS);
+  });
+
+  it("is empty when the registry has no getAvailable (older Pi or a test fake)", () => {
+    const ctx = { modelRegistry: { find: () => undefined } } as unknown as Parameters<typeof availableModels>[0];
+    expect(availableModels(ctx)).toEqual([]);
+  });
+
+  it("describes a model for the Choice criteria", () => {
+    const text = describeModel(DEEPSEEK_MODELS[1] as ModelInfo);
+    expect(text).toContain("deepseek/deepseek-v4-pro");
+    expect(text).toContain("extended reasoning");
+    expect(text).toContain("128k context");
+  });
+});
+
+describe("classifier model choice", () => {
+  it("maps the option key back to a concrete model", () => {
+    expect(resolveChosenModel(choice("m1"), DEEPSEEK_MODELS)).toEqual({
+      provider: "deepseek",
+      model: "deepseek-v4-pro",
+    });
+    expect(resolveChosenModel(choice("m9"), DEEPSEEK_MODELS)).toBeUndefined();
+    expect(resolveChosenModel(choice("other"), DEEPSEEK_MODELS)).toBeUndefined();
+    expect(resolveChosenModel(undefined, DEEPSEEK_MODELS)).toBeUndefined();
+  });
+
+  it("prefers the classifier's model over the tier map", () => {
+    const decision = decideRouter(
+      answers({ task_type: choice("trivial_edit"), reasoning_needed: score(0.1) }),
+      makeConfig(),
+      DEEPSEEK_MODELS,
+      choice("m1"),
+    );
+    expect(decision.tier).toBe("cheap");
+    expect(decision.chosenModel).toEqual({ provider: "deepseek", model: "deepseek-v4-pro" });
+    expect(decision.signals.chosen_model).toBe("deepseek/deepseek-v4-pro");
+  });
+
+  it("falls back to the tier when the classifier did not choose", () => {
+    const decision = decideRouter(
+      answers({ task_type: choice("trivial_edit"), reasoning_needed: score(0.1) }),
+      makeConfig(),
+      DEEPSEEK_MODELS,
+    );
+    expect(decision.tier).toBe("cheap");
+    expect(decision.chosenModel).toBeUndefined();
+  });
+
+  it("drops a chosen model outside the residency allowlist", () => {
+    const config = makeConfig({
+      ...deepseekTiers(),
+      residency: { enabled: true, allowedModels: ["deepseek-flash"] },
+    });
+    const decision = decideRouter(
+      answers({ touches_sensitive: noul(0.9) }),
+      config,
+      DEEPSEEK_MODELS,
+      choice("m1"),
+    );
+    expect(decision.chosenModel).toBeUndefined();
+    expect(decision.restricted).toBe(true);
+  });
+
+  it("keeps a chosen model inside the allowlist", () => {
+    const config = makeConfig({
+      ...deepseekTiers(),
+      residency: { enabled: true, allowedModels: ["deepseek-flash"] },
+    });
+    const decision = decideRouter(answers({ touches_sensitive: noul(0.9) }), config, DEEPSEEK_MODELS, choice("m0"));
+    expect(decision.chosenModel).toEqual({ provider: "deepseek", model: "deepseek-flash" });
+  });
+
+  it("checks allowlist membership for a concrete model", () => {
+    expect(isAllowedModel({ provider: "deepseek", model: "deepseek-flash" }, ["deepseek-flash"])).toBe(true);
+    expect(isAllowedModel({ provider: "deepseek", model: "deepseek-flash" }, ["deepseek/deepseek-flash"])).toBe(true);
+    expect(isAllowedModel({ provider: "deepseek", model: "deepseek-flash" }, ["claude-haiku-4-5"])).toBe(false);
+  });
+
+  it("resolves the configured tier model", () => {
+    expect(modelForTier(makeConfig(), "cheap")).toEqual({ provider: "anthropic", model: "claude-haiku-4-5" });
   });
 });

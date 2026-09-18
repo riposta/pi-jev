@@ -11,8 +11,16 @@
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { isToolCallEventType } from "@earendil-works/pi-coding-agent";
-import { ROUTER_QUESTIONS, ROUTER_QUESTIONS_CORE } from "../questions.ts";
-import type { Answers, Config, Deps, RouterDecision, TierName, ThinkingLevel } from "../types.ts";
+import { ROUTER_QUESTIONS, ROUTER_QUESTIONS_CORE, withModelChoice } from "../questions.ts";
+import type {
+  Answers,
+  ChoiceAnswer,
+  Config,
+  Deps,
+  RouterDecision,
+  TierName,
+  ThinkingLevel,
+} from "../types.ts";
 import { formatStatus } from "../telemetry.ts";
 import { messageText } from "../messages.ts";
 
@@ -88,11 +96,30 @@ export function thinkingFor(score: number, bands: { max: number; level: Thinking
   return bands[bands.length - 1]?.level ?? "off";
 }
 
+/** True when a concrete model is inside the residency allowlist. */
+export function isAllowedModel(
+  model: { provider: string; model: string },
+  allowedModels: readonly string[],
+): boolean {
+  return (
+    allowedModels.includes(model.model) || allowedModels.includes(`${model.provider}/${model.model}`)
+  );
+}
+
 /**
  * Pure decision logic. Tests feed it fixed answers; the hook only supplies
  * state. Every threshold comes from config.
+ *
+ * `available` is the list Pi actually has, used only to resolve the optional
+ * `target_model` answer; when it or the answer is absent, the tier map decides,
+ * which is what the offline fixtures and older logs exercise.
  */
-export function decideRouter(answers: RouterDecisionInput, config: Config): RouterDecision {
+export function decideRouter(
+  answers: RouterDecisionInput,
+  config: Config,
+  available: readonly ModelInfo[] = [],
+  targetModel?: ChoiceAnswer,
+): RouterDecision {
   const router = config.modules.router;
   const taskType = answers.task_type.choice;
   const reasoning = answers.reasoning_needed.score;
@@ -113,12 +140,19 @@ export function decideRouter(answers: RouterDecisionInput, config: Config): Rout
     lowConfidence.push("reasoning_needed");
   }
 
+  let chosenModel = resolveChosenModel(targetModel, available);
+
   let restricted = false;
   const sensitive = answers.touches_sensitive.noul;
   if (config.residency.enabled && sensitive > router.sensitiveThreshold) {
     const resolved = restrictToAllowed(tier, config, config.residency.allowedModels);
     tier = resolved.tier;
     restricted = resolved.restricted;
+    // A directly chosen model must honour the allowlist too; otherwise drop it
+    // and fall back to the restricted tier.
+    if (chosenModel && !isAllowedModel(chosenModel, config.residency.allowedModels)) {
+      chosenModel = undefined;
+    }
   }
 
   const thinking = thinkingFor(reasoning, router.thinkingBands);
@@ -133,6 +167,7 @@ export function decideRouter(answers: RouterDecisionInput, config: Config): Rout
   return {
     tier,
     thinking,
+    chosenModel,
     readOnly,
     clarify,
     restricted,
@@ -145,6 +180,8 @@ export function decideRouter(answers: RouterDecisionInput, config: Config): Rout
       needs_write_tools: write,
       is_underspecified: answers.is_underspecified.noul,
       low_confidence: lowConfidence.join(",") || "none",
+      target_model: targetModel?.choice ?? "none",
+      chosen_model: chosenModel ? `${chosenModel.provider}/${chosenModel.model}` : "none",
     },
   };
 }
@@ -155,9 +192,85 @@ export function tierLabel(tier: TierName, config: Config): string {
   return `${entry.provider}/${entry.model}`;
 }
 
+/* -------------------------------------------------------------------------- */
+/* Available models (from Pi)                                                 */
+/* -------------------------------------------------------------------------- */
+
+/** The subset of Pi's model record the router needs. Kept Pi-agnostic. */
+export interface ModelInfo {
+  provider: string;
+  id: string;
+  name?: string;
+  reasoning?: boolean;
+  contextWindow?: number;
+}
+
+/**
+ * Reads the models Pi can actually use right now (`getAvailable`), so the
+ * classifier is offered real choices instead of the config's tier names, which
+ * may point at providers this machine does not have. Defensive: a registry
+ * without `getAvailable` (older Pi, test fakes) yields an empty list and the
+ * router falls back to the tier map.
+ */
+export function availableModels(ctx: ExtensionContext): ModelInfo[] {
+  const registry = ctx.modelRegistry as unknown as {
+    getAvailable?: () => Array<{
+      provider: unknown;
+      id: string;
+      name?: string;
+      reasoning?: boolean;
+      contextWindow?: number;
+    }>;
+  };
+  if (typeof registry?.getAvailable !== "function") return [];
+  try {
+    return registry.getAvailable().map((model) => ({
+      provider: String(model.provider),
+      id: model.id,
+      name: model.name,
+      reasoning: model.reasoning,
+      contextWindow: model.contextWindow,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+/** A short, reviewable description for the model Choice criteria. */
+export function describeModel(model: ModelInfo): string {
+  const parts = [`${model.provider}/${model.id}`];
+  if (model.name && model.name !== model.id) parts.push(model.name);
+  if (model.reasoning) parts.push("extended reasoning");
+  if (model.contextWindow) parts.push(`${Math.round(model.contextWindow / 1000)}k context`);
+  return parts.join(" — ").slice(0, 200);
+}
+
+/**
+ * Maps the classifier's `target_model` answer (`m0`, `m1`, …) back to a model
+ * Pi reported. Returns undefined for a missing or malformed answer, so the
+ * tier fallback applies.
+ */
+export function resolveChosenModel(
+  answer: ChoiceAnswer | undefined,
+  available: readonly ModelInfo[],
+): { provider: string; model: string } | undefined {
+  if (!answer) return undefined;
+  const match = /^m(\d+)$/.exec(answer.choice);
+  if (!match) return undefined;
+  const model = available[Number(match[1])];
+  return model ? { provider: model.provider, model: model.id } : undefined;
+}
+
+/** The model a tier resolves to in config. */
+export function modelForTier(config: Config, tier: TierName): { provider: string; model: string } {
+  const entry = config.modules.router.tiers[tier];
+  return { provider: entry.provider, model: entry.model };
+}
+
 export function register(pi: ExtensionAPI, deps: Deps): void {
   const recentFiles: string[] = [];
   let previousTurn = "";
+  let warnedMissingModel = false;
 
   pi.on("tool_call", (event) => {
     if (
@@ -179,15 +292,27 @@ export function register(pi: ExtensionAPI, deps: Deps): void {
 
   pi.on("before_agent_start", async (event, ctx) => {
     if (!deps.config.modules.router.enabled || !deps.state.layerEnabled) return;
+
+    // Pi owns the list of usable models. Send the real list to Jev so the
+    // classifier picks a model this machine actually has, instead of a tier
+    // name that may point at a provider that is not configured.
+    const models = availableModels(ctx);
+    const options = models.map((model, index) => ({
+      key: `m${index}`,
+      description: describeModel(model),
+    }));
+    const base = deps.config.modules.router.skillRouting ? ROUTER_QUESTIONS : ROUTER_QUESTIONS_CORE;
+    const questions = withModelChoice(base, options);
+
     const state = {
       prompt: event.prompt,
       cwd_basename: basename(ctx.cwd),
       recent_files: [...recentFiles],
       previous_turn: previousTurn,
       available_tiers: ORDER.map((tier) => tierLabel(tier, deps.config)),
+      available_models: models.map((model) => `${model.provider}/${model.id}`),
     };
 
-    const questions = deps.config.modules.router.skillRouting ? ROUTER_QUESTIONS : ROUTER_QUESTIONS_CORE;
     const result = await deps.ask("router", state, questions, { signal: ctx.signal });
     if (!result) {
       deps.log({
@@ -202,7 +327,13 @@ export function register(pi: ExtensionAPI, deps: Deps): void {
       return;
     }
 
-    const decision = decideRouter(result.answers, deps.config);
+    const targetModel = (result.answers as Record<string, ChoiceAnswer | undefined>).target_model;
+    const decision = decideRouter(
+      result.answers as unknown as RouterAnswers,
+      deps.config,
+      models,
+      targetModel,
+    );
     const shadow = deps.state.shadow.router;
     const record = {
       hook: "router" as const,
@@ -221,6 +352,10 @@ export function register(pi: ExtensionAPI, deps: Deps): void {
         readOnly: decision.readOnly,
         clarify: decision.clarify,
         restricted: decision.restricted,
+        chosenModel: decision.chosenModel
+          ? `${decision.chosenModel.provider}/${decision.chosenModel.model}`
+          : "tier",
+        availableModels: state.available_models,
         signals: decision.signals,
       },
     };
@@ -232,7 +367,15 @@ export function register(pi: ExtensionAPI, deps: Deps): void {
 
     if (shadow) return;
 
-    await applyDecision(pi, ctx, decision, deps.config);
+    const missing = await applyDecision(pi, ctx, decision, deps.config);
+    if (missing && !warnedMissingModel) {
+      warnedMissingModel = true;
+      ctx.ui.notify(
+        `pi-jev: model ${missing} is not available in Pi; leaving the model unchanged. ` +
+          "Configure modules.router.tiers or install the model.",
+        "warning",
+      );
+    }
     if (decision.clarify) {
       return { systemPrompt: `${event.systemPrompt}\n\n${CLARIFY_DIRECTIVE}` };
     }
@@ -240,17 +383,32 @@ export function register(pi: ExtensionAPI, deps: Deps): void {
   });
 }
 
+/**
+ * Applies the decision. Returns the `provider/model` label when the resolved
+ * model is not in Pi's registry, so the caller can warn once instead of
+ * silently keeping the previous model.
+ */
 export async function applyDecision(
   pi: ExtensionAPI,
   ctx: ExtensionContext,
   decision: RouterDecision,
   config: Config,
-): Promise<void> {
-  const tier = config.modules.router.tiers[decision.tier];
-  const model = ctx.modelRegistry.find(tier.provider, tier.model);
-  if (model) await pi.setModel(model);
+): Promise<string | undefined> {
+  const target = decision.chosenModel ?? modelForTier(config, decision.tier);
+  const model = ctx.modelRegistry.find(target.provider, target.model);
+  let missing: string | undefined;
+  if (model) {
+    // Skip a redundant switch: re-issuing setModel for the already-active model
+    // can restart the turn in Pi and burn an extra model call.
+    const current = ctx.model;
+    const alreadyActive = current?.provider === model.provider && current?.id === model.id;
+    if (!alreadyActive) await pi.setModel(model);
+  } else {
+    missing = `${target.provider}/${target.model}`;
+  }
   pi.setThinkingLevel(decision.thinking);
   if (decision.readOnly) pi.setActiveTools([...READ_ONLY_TOOLS]);
+  return missing;
 }
 
 function basename(path: string): string {

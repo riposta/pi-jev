@@ -194,7 +194,7 @@ When the gate is live and non-shadow, a classification failure falls back to
 
 | Module | Hook | Default | What it does |
 | --- | --- | --- | --- |
-| `router` | `before_agent_start` | enabled, shadow | picks a model tier, thinking level and tool loadout; nudges on underspecification |
+| `router` | `before_agent_start` | enabled, shadow | picks a model from the models Pi reports available (configured tiers are the fallback), thinking level and tool loadout; nudges on underspecification |
 | `gate` | `tool_call` | enabled, shadow | allow / confirm / block based on blast radius, reversibility, regenerable artefacts, intent drift, secrets, exfiltration, unverified code, installs and privilege/remote execution |
 | `shield` | `tool_result` | enabled, shadow | withholds prompt-injected output, masks secrets and personal data |
 | `prune` | `tool_result` | disabled | replaces low-relevance output with a summary and a temp-file pointer |
@@ -203,6 +203,12 @@ When the gate is live and non-shadow, a classification failure falls back to
 `shield` and `prune` share **one** Jev request on `tool_result` and split the
 answers in code. That orchestration lives in `index.ts` so the two modules stay
 independent and the "one request per hook" rule holds.
+
+The router asks Pi for the models it can actually use
+(`modelRegistry.getAvailable()`) and sends that list to Jev, which picks one
+directly; the configured `tiers` stay as the fallback when the list is empty or
+the answer is missing. A configured tier whose provider/model is not installed
+in Pi is reported once instead of failing silently.
 
 ### Promoting a module
 

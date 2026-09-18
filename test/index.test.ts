@@ -140,6 +140,49 @@ describe("index wiring", () => {
     expect(harness.calls.setThinkingLevel).toContain("low");
   });
 
+  it("sends Pi's available models to Jev and applies the chosen one", async () => {
+    mock.setAnswers({ ...ROUTER_ANSWERS, target_model: choice("m1") });
+    const { harness, ctx } = await boot();
+    ctx.modelRegistry = {
+      find: (provider: string, id: string) => ({ provider, id }),
+      getAvailable: () => [
+        { provider: "deepseek", id: "deepseek-flash", name: "Flash", reasoning: false, contextWindow: 64_000 },
+        { provider: "deepseek", id: "deepseek-v4-pro", name: "Pro", reasoning: true, contextWindow: 128_000 },
+      ],
+    };
+    await harness.commands.get("jev")!("shadow router off", ctx);
+    await emit(harness.handlers, "before_agent_start", { prompt: "add a feature", systemPrompt: "SYS" }, ctx);
+    expect(harness.calls.setModel.at(-1)).toEqual({ provider: "deepseek", id: "deepseek-v4-pro" });
+  });
+
+  it("does not re-issue setModel when the chosen model is already active", async () => {
+    mock.setAnswers({ ...ROUTER_ANSWERS, target_model: choice("m0") });
+    const { harness, ctx } = await boot();
+    ctx.modelRegistry = {
+      find: (provider: string, id: string) => ({ provider, id }),
+      getAvailable: () => [
+        { provider: "deepseek", id: "deepseek-flash", name: "Flash", reasoning: false, contextWindow: 64_000 },
+      ],
+    };
+    ctx.model = { provider: "deepseek", id: "deepseek-flash" };
+    await harness.commands.get("jev")!("shadow router off", ctx);
+    await emit(harness.handlers, "before_agent_start", { prompt: "add a feature", systemPrompt: "SYS" }, ctx);
+    expect(harness.calls.setModel).toHaveLength(0);
+  });
+
+  it("warns instead of silently keeping the model when the tier model is missing", async () => {
+    mock.setAnswers(ROUTER_ANSWERS);
+    const { harness, ctx } = await boot();
+    ctx.modelRegistry = { find: () => undefined };
+    await harness.commands.get("jev")!("shadow router off", ctx);
+    await emit(harness.handlers, "before_agent_start", { prompt: "add a feature", systemPrompt: "SYS" }, ctx);
+    expect(harness.calls.setModel).toHaveLength(0);
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      expect.stringContaining("not available in Pi"),
+      "warning",
+    );
+  });
+
   it("appends the clarify directive when the request is underspecified", async () => {
     mock.setAnswers({ ...ROUTER_ANSWERS, is_underspecified: noul(0.95) });
     const { harness, ctx } = await boot();
