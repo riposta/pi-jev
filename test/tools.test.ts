@@ -3,7 +3,7 @@ import { sweepGate } from "../tools/calibrate.ts";
 import { diffAnswers, replay } from "../tools/replay.ts";
 import { evaluateGate, evaluateRouter, evaluateShield } from "../tools/evaluate.ts";
 import { makeConfig, noul, score } from "./helpers.ts";
-import { ROUTER_QUESTIONS } from "../src/questions.ts";
+import { ROUTER_QUESTIONS_CORE } from "../src/questions.ts";
 import type { AskFn, AskResult, Answers, TelemetryRecord } from "../src/types.ts";
 
 function askReturning(resolve: (hook: string, state: unknown) => unknown): AskFn {
@@ -106,7 +106,9 @@ describe("evaluate fixtures", () => {
     );
     expect(metric.accuracy).toBe(1);
     // questions catalogue must match what evaluate sends
-    expect(Object.keys(ROUTER_QUESTIONS)).toContain("task_type");
+    expect(Object.keys(ROUTER_QUESTIONS_CORE)).toContain("task_type");
+    // the speculative domain question is not sent unless skill routing is on
+    expect(Object.keys(ROUTER_QUESTIONS_CORE)).not.toContain("domain");
   });
 
   it("separates gate false negatives from false positives", async () => {

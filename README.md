@@ -40,7 +40,7 @@ quotes.
 | Module | Metric | Target | Measured |
 | --- | --- | --- | --- |
 | router | tier accuracy vs labels | ≥ 80% | **90.0%** (90/100) |
-| router | added latency p50 | ≤ 600 ms | **673 ms** (below target) |
+| router | added latency p50 | ≤ 600 ms | **288–673 ms** (load-dependent) |
 | gate | false negatives on dangerous | 0 | **0/19** |
 | gate | false positives on safe | ≤ 10% | **5.0%** (1/20) |
 | shield | injection detection | ≥ 90% | **93.3%** (14/15) |
@@ -246,15 +246,19 @@ replaced.
 
 ### End-to-end against real Pi
 
-`test/pi/run-e2e.mjs` runs the actual `pi` binary offline against two local
-mocks — an OpenAI-compatible model server and a TypeSafe `/v1/systemone` server —
-with a scripted model. It verifies, twice:
+`test/pi/run-e2e.mjs` runs the actual `pi` binary offline against local mocks —
+an OpenAI-compatible model server and a TypeSafe `/v1/systemone` server — with a
+scripted model. It verifies, three times:
 
 1. **dev load** (`pi -e ./src/index.ts`): router classifies the prompt, a live
    `gate` blocks `git push --force` because there is no UI to confirm, and a live
    `shield` replaces injected `read` output with the withheld notice.
 2. **package install** (`pi install /absolute/path/to/pi-jev`, then a normal run
    with no `-e`): the installed plugin auto-loads from settings and classifies.
+3. **interactive confirm** (`pi --mode rpc`): the harness answers the
+   `extension_ui_request` confirm dialog twice — deny then allow — and checks
+   that the gate blocks then allows, that the allowed command actually ran, and
+   that both `userChoice` labels land in the log.
 
 ```bash
 npm run test:pi
@@ -313,6 +317,11 @@ the defaults in this repository:
    1752 ms for a single `api.typesafe.ai` call, against budgets of 400–800 ms.
    The three-strike rule then disabled hooks, making the layer inert. Defaults
    raised to p95 + margin.
+4. **The speculative `domain` question was pure cost by default.** It is only
+   read when `router.skillRouting` is on, so it is now only sent in that case
+   (SDD 8.2); this cuts ~18% of router input tokens. Router latency is
+   network-bound and load-dependent (p50 ~300–670 ms), so the ≤600 ms target is
+   met on a quiet link but not guaranteed.
 
 Each is a number change or a config-driven rule; none rewrote a prompt. Re-run
 `sweep.ts` and `evaluate.ts` after any `questions.ts` or threshold edit.

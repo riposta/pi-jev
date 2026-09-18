@@ -17,12 +17,14 @@ import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { StringDecoder } from "node:string_decoder";
 import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, "..", "..");
 const piBin = process.env.PI_BIN ?? "pi";
 const modelPort = 8899;
+const modelRpcPort = 8897;
 const jevPort = 8898;
 
 const failures = [];
@@ -71,6 +73,64 @@ function drain(child) {
   child.stderr?.on("data", () => {});
 }
 
+/**
+ * Drive `pi --mode rpc` over stdin/stdout. `onEvent(event, respond)` may return
+ * "done" to finish. The `prompt` is sent once the process is spawned.
+ */
+function runRpc(command, args, options, { prompt, onEvent, timeoutMs = 60_000 }) {
+  return new Promise((resolve) => {
+    const child = spawn(command, args, { ...options, stdio: ["pipe", "pipe", "pipe"] });
+    const decoder = new StringDecoder("utf8");
+    let buffer = "";
+    let raw = "";
+    let stderr = "";
+    let settled = false;
+    const respond = (message) => child.stdin.write(`${JSON.stringify(message)}\n`);
+
+    const finish = (code) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve({ code, raw, stderr });
+    };
+
+    const handleLine = (line) => {
+      raw += `${line}\n`;
+      let event;
+      try {
+        event = JSON.parse(line);
+      } catch {
+        return;
+      }
+      if (onEvent(event, respond) === "done") {
+        child.kill("SIGKILL");
+        finish(0);
+      }
+    };
+
+    child.stdout.on("data", (chunk) => {
+      buffer += decoder.write(chunk);
+      for (;;) {
+        const index = buffer.indexOf("\n");
+        if (index === -1) break;
+        let line = buffer.slice(0, index);
+        buffer = buffer.slice(index + 1);
+        if (line.endsWith("\r")) line = line.slice(0, -1);
+        if (line) handleLine(line);
+      }
+    });
+    child.stderr.on("data", (chunk) => (stderr += chunk));
+    child.on("close", (code) => finish(code));
+
+    const timer = setTimeout(() => {
+      child.kill("SIGKILL");
+      finish(null);
+    }, timeoutMs);
+
+    respond({ type: "prompt", message: prompt });
+  });
+}
+
 const work = mkdtempSync(join(tmpdir(), "pi-jev-e2e-"));
 const agent = join(work, "agent");
 const cwd = join(work, "work");
@@ -81,6 +141,23 @@ const modelsJson = {
   providers: {
     mock: {
       baseUrl: `http://127.0.0.1:${modelPort}/v1`,
+      api: "openai-completions",
+      apiKey: "mock",
+      compat: { supportsDeveloperRole: false, supportsReasoningEffort: false, supportsUsageInStreaming: false },
+      models: [
+        {
+          id: "mock-1",
+          name: "Mock 1",
+          reasoning: false,
+          input: ["text"],
+          contextWindow: 128000,
+          maxTokens: 4096,
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+        },
+      ],
+    },
+    mockrpc: {
+      baseUrl: `http://127.0.0.1:${modelRpcPort}/v1`,
       api: "openai-completions",
       apiKey: "mock",
       compat: { supportsDeveloperRole: false, supportsReasoningEffort: false, supportsUsageInStreaming: false },
@@ -146,12 +223,27 @@ const jev = spawn("node", [join(here, "mock-jev-server.mjs")], {
   env: { ...process.env, MOCK_JEV_ANSWERS: answersPath, MOCK_JEV_PORT: String(jevPort) },
   stdio: ["ignore", "pipe", "pipe"],
 });
+const rpcScriptPath = join(work, "script-rpc.json");
+writeFileSync(
+  rpcScriptPath,
+  JSON.stringify([
+    { tool_calls: [{ name: "bash", arguments: { command: "mkdir -p rpc-test-dir" } }] },
+    { tool_calls: [{ name: "bash", arguments: { command: "mkdir -p rpc-test-dir" } }] },
+    { text: "Done after confirmations." },
+  ]),
+);
+const modelRpc = spawn("node", [join(here, "mock-model-server.mjs")], {
+  env: { ...process.env, MOCK_SCRIPT: rpcScriptPath, MOCK_MODEL_PORT: String(modelRpcPort) },
+  stdio: ["ignore", "pipe", "pipe"],
+});
 drain(model);
 drain(jev);
+drain(modelRpc);
 
 let exitCode = 1;
 try {
   await waitForPort(modelPort);
+  await waitForPort(modelRpcPort);
   await waitForPort(jevPort);
   console.log(`workspace: ${work}`);
   console.log("running pi...");
@@ -248,12 +340,76 @@ try {
   check("installed plugin auto-loaded and classified", records2.some((record) => record.hook === "router"), JSON.stringify(records2.map((r) => r.hook)));
   check("phase B pi exited 0", resultB.code === 0, `got ${resultB.code}`);
 
+  // Phase C: RPC mode drives the interactive confirm dialog. The first prompt
+  // is denied and the second allowed, so both branches and their userChoice
+  // labels are exercised against the real RPC UI protocol.
+  console.log("\nphase C: RPC interactive confirm");
+  const work3 = join(work, "work3");
+  mkdirSync(work3, { recursive: true });
+  const confirmMessages = [];
+  const rpcEnv = { ...env, PI_JEV_SHIELD_SHADOW: "true" };
+  const rpc = await runRpc(
+    piBin,
+    [
+      "--mode",
+      "rpc",
+      "--no-extensions",
+      "--no-session",
+      "--no-context-files",
+      "--no-approve",
+      "-e",
+      join(root, "src", "index.ts"),
+      "--model",
+      "mockrpc/mock-1",
+    ],
+    { cwd: work3, env: rpcEnv },
+    {
+      prompt: "Do the requested work.",
+      onEvent: (event, respond) => {
+        if (event.type === "extension_ui_request" && event.method === "confirm") {
+          confirmMessages.push(event.message ?? "");
+          respond({ type: "extension_ui_response", id: event.id, confirmed: confirmMessages.length > 1 });
+          return;
+        }
+        if (event.type === "agent_settled") return "done";
+        return undefined;
+      },
+    },
+  );
+  const logDir3 = join(work3, ".pi", "jev-log");
+  const records3 = existsSync(logDir3)
+    ? readdirSync(logDir3)
+        .filter((name) => name.endsWith(".jsonl"))
+        .flatMap((name) =>
+          readFileSync(join(logDir3, name), "utf8")
+            .split("\n")
+            .filter(Boolean)
+            .map((line) => JSON.parse(line)),
+        )
+    : [];
+  const gateRecords = records3.filter((record) => record.hook === "gate");
+  writeFileSync(join(work3, "rpc-raw.jsonl"), rpc.raw);
+  writeFileSync(join(work3, "rpc-stderr.txt"), rpc.stderr ?? "");
+  console.log(`phase C confirms: ${confirmMessages.length}, gate records: ${gateRecords.length}, rpc exit ${rpc.code}`);
+  if (confirmMessages.length === 0) {
+    console.log("--- rpc raw (first 12 lines) ---");
+    for (const line of rpc.raw.split("\n").slice(0, 12)) console.log(line.slice(0, 300));
+    console.log("--- rpc stderr (tail) ---");
+    console.log((rpc.stderr ?? "").split("\n").slice(-8).join("\n"));
+  }
+  check("rpc emitted two confirm dialogs", confirmMessages.length === 2, String(confirmMessages.length));
+  check("confirm message carries the driving number", confirmMessages[0]?.includes("blast radius"), confirmMessages[0]);
+  check("first confirm denied -> block", gateRecords[0]?.userChoice === "deny" && gateRecords[0]?.decision === "block", JSON.stringify(gateRecords[0]?.decision));
+  check("second confirm allowed -> allow", gateRecords[1]?.userChoice === "allow" && gateRecords[1]?.decision === "allow", JSON.stringify(gateRecords[1]?.decision));
+  check("allowed command actually ran", existsSync(join(work3, "rpc-test-dir")));
+
   exitCode = failures.length === 0 ? 0 : 1;
 } catch (error) {
   console.error(error);
   exitCode = 1;
 } finally {
   model.kill();
+  modelRpc.kill();
   jev.kill();
   if (exitCode === 0 && process.env.KEEP_TMP !== "1") rmSync(work, { recursive: true, force: true });
   else console.log(`workspace kept: ${work}`);

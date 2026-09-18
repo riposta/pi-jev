@@ -133,6 +133,21 @@ export const ROUTER_QUESTIONS = {
   } as const,
 } as const;
 
+/**
+ * Router questions for the default path: everything except the speculative
+ * `domain`. `domain` is only read when `router.skillRouting` is enabled, so
+ * including it by default would pay its tokens for an answer no code path
+ * reads (SDD 8.2). The state and the single-request shape are unchanged.
+ */
+export const ROUTER_QUESTIONS_CORE = {
+  task_type: ROUTER_QUESTIONS.task_type,
+  reasoning_needed: ROUTER_QUESTIONS.reasoning_needed,
+  scope: ROUTER_QUESTIONS.scope,
+  is_underspecified: ROUTER_QUESTIONS.is_underspecified,
+  needs_write_tools: ROUTER_QUESTIONS.needs_write_tools,
+  touches_sensitive: ROUTER_QUESTIONS.touches_sensitive,
+} as const;
+
 /* -------------------------------------------------------------------------- */
 /* gate — once per classified tool call                                       */
 /* -------------------------------------------------------------------------- */

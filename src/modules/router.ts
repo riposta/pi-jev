@@ -11,12 +11,18 @@
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { isToolCallEventType } from "@earendil-works/pi-coding-agent";
-import { ROUTER_QUESTIONS } from "../questions.ts";
+import { ROUTER_QUESTIONS, ROUTER_QUESTIONS_CORE } from "../questions.ts";
 import type { Answers, Config, Deps, RouterDecision, TierName, ThinkingLevel } from "../types.ts";
 import { formatStatus } from "../telemetry.ts";
 import { messageText } from "../messages.ts";
 
 export type RouterAnswers = Answers<typeof ROUTER_QUESTIONS>;
+
+/** The subset `decideRouter` actually reads; keeps the decision independent of speculative questions. */
+export type RouterDecisionInput = Pick<
+  RouterAnswers,
+  "task_type" | "reasoning_needed" | "is_underspecified" | "needs_write_tools" | "touches_sensitive"
+>;
 
 /** Tools that cannot modify the repository. Used when write work is unlikely. */
 export const READ_ONLY_TOOLS: readonly string[] = ["read", "ls", "grep", "find"];
@@ -86,7 +92,7 @@ export function thinkingFor(score: number, bands: { max: number; level: Thinking
  * Pure decision logic. Tests feed it fixed answers; the hook only supplies
  * state. Every threshold comes from config.
  */
-export function decideRouter(answers: RouterAnswers, config: Config): RouterDecision {
+export function decideRouter(answers: RouterDecisionInput, config: Config): RouterDecision {
   const router = config.modules.router;
   const taskType = answers.task_type.choice;
   const reasoning = answers.reasoning_needed.score;
@@ -181,7 +187,8 @@ export function register(pi: ExtensionAPI, deps: Deps): void {
       available_tiers: ORDER.map((tier) => tierLabel(tier, deps.config)),
     };
 
-    const result = await deps.ask("router", state, ROUTER_QUESTIONS, { signal: ctx.signal });
+    const questions = deps.config.modules.router.skillRouting ? ROUTER_QUESTIONS : ROUTER_QUESTIONS_CORE;
+    const result = await deps.ask("router", state, questions, { signal: ctx.signal });
     if (!result) {
       deps.log({
         hook: "router",

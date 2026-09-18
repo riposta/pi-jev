@@ -15,7 +15,7 @@ import { pathToFileURL } from "node:url";
 import { deepMerge, loadConfig } from "../src/config.ts";
 import { createClient } from "../src/client.ts";
 import { createRedactor } from "../src/redact.ts";
-import { GATE_QUESTIONS, ROUTER_QUESTIONS, SHIELD_QUESTIONS } from "../src/questions.ts";
+import { GATE_QUESTIONS, ROUTER_QUESTIONS_CORE, SHIELD_QUESTIONS } from "../src/questions.ts";
 import { parseJsonl } from "../src/telemetry.ts";
 import { decideRouter, type RouterAnswers } from "../src/modules/router.ts";
 import { decideGate, enforceBlockPolicy, type GateAnswers } from "../src/modules/gate.ts";
@@ -74,7 +74,7 @@ export async function evaluateRouter(
 ): Promise<RouterMetric> {
   const metric: RouterMetric = { total: 0, correct: 0, accuracy: 0, confusion: {}, mismatches: [], items: [] };
   for (const fixture of fixtures) {
-    const result = await ask("router", { prompt: fixture.prompt, cwd_basename: "repo", recent_files: [], previous_turn: "", available_tiers: [] }, ROUTER_QUESTIONS);
+    const result = await ask("router", { prompt: fixture.prompt, cwd_basename: "repo", recent_files: [], previous_turn: "", available_tiers: [] }, ROUTER_QUESTIONS_CORE);
     if (!result) continue;
     const decision = decideRouter(result.answers as RouterAnswers, config);
     metric.total += 1;
