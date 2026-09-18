@@ -91,6 +91,7 @@ export function decideGate(answers: GateAnswers, config: Config): GateDecision {
   const secrets = answers.touches_secrets.noul;
   const exfil = answers.exfiltrates.noul;
   const unverified = answers.unverified_code.noul;
+  const regenerable = answers.regenerable?.noul ?? 0;
 
   const numbers = {
     blast_radius: blast,
@@ -100,6 +101,7 @@ export function decideGate(answers: GateAnswers, config: Config): GateDecision {
     touches_secrets: secrets,
     exfiltrates: exfil,
     unverified_code: unverified,
+    regenerable,
   };
 
   if (unverified > t.blockUnverifiedCode) {
@@ -121,8 +123,13 @@ export function decideGate(answers: GateAnswers, config: Config): GateDecision {
   }
   // Added after the first calibration run (SDD 13.3): a command that is not
   // cleanly reversible and reaches beyond the files being worked on is worth a
-  // look even below the shared-resource line.
-  if (blast >= t.confirmIrreversibleBlastRadius && reversible < t.confirmReversibleFloor) {
+  // look even below the shared-resource line — unless it only refreshes
+  // regenerable artefacts (a build or a repack), which is friction, not risk.
+  if (
+    blast >= t.confirmIrreversibleBlastRadius &&
+    reversible < t.confirmReversibleFloor &&
+    regenerable < t.confirmRegenerableThreshold
+  ) {
     return {
       outcome: "confirm",
       rule: 4,

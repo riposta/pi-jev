@@ -16,6 +16,7 @@ function answers(patch: Partial<GateAnswers> = {}): GateAnswers {
   return {
     blast_radius: score(0.5, 0.9),
     reversible: noul(0.9),
+    regenerable: noul(0.1),
     touches_secrets: noul(0.1),
     matches_intent: noul(0.9),
     exfiltrates: noul(0.1),
@@ -49,6 +50,14 @@ describe("gate decision table (SDD 9.4)", () => {
     // a read-only detour is not drift (blast radius 0)
     expect(decideGate(answers({ matches_intent: noul(0.1), blast_radius: score(0.2) }), makeConfig()).rule).toBe(7);
     expect(decideGate(answers({ matches_intent: noul(0.4), blast_radius: score(1.2) }), makeConfig()).rule).toBe(7);
+  });
+
+  it("row 4: does not confirm a build that only refreshes regenerable artefacts", () => {
+    const build = answers({ blast_radius: score(1.05), reversible: noul(0.64), regenerable: noul(0.92) });
+    expect(decideGate(build, makeConfig()).rule).toBe(7);
+    // the same reversibility without regenerability is a real reset
+    const reset = answers({ blast_radius: score(1.05), reversible: noul(0.64), regenerable: noul(0.1) });
+    expect(decideGate(reset, makeConfig())).toMatchObject({ outcome: "confirm", rule: 4 });
   });
 
   it("row 4: confirms a shared-resource blast radius", () => {

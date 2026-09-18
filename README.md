@@ -162,7 +162,7 @@ When the gate is live and non-shadow, a classification failure falls back to
 | Module | Hook | Default | What it does |
 | --- | --- | --- | --- |
 | `router` | `before_agent_start` | enabled, shadow | picks a model tier, thinking level and tool loadout; nudges on underspecification |
-| `gate` | `tool_call` | enabled, shadow | allow / confirm / block based on blast radius, reversibility, intent drift, secrets, exfiltration, unverified code |
+| `gate` | `tool_call` | enabled, shadow | allow / confirm / block based on blast radius, reversibility, regenerable artefacts, intent drift, secrets, exfiltration, unverified code |
 | `shield` | `tool_result` | enabled, shadow | withholds prompt-injected output, masks secrets and personal data |
 | `prune` | `tool_result` | disabled | replaces low-relevance output with a summary and a temp-file pointer |
 | `watchdog` | `turn_end` | disabled | detects looping and unverified completion; injects advice, never aborts |
@@ -352,6 +352,14 @@ the defaults in this repository:
    sample also showed build commands (`npm run build`, `make`, `docker build`)
    triggering the irreversible confirm; [`docs/calibration.md`](docs/calibration.md)
    records it as friction to re-validate once labelled data exists.
+6. **Build friction needed a new question, not a number.** `npm run build` and
+   `git reset --hard` scored almost the same `blast_radius` and `reversible`, so
+   no threshold could separate a rebuild from a lost-work reset. Added a gate
+   question, `regenerable`, and made the irreversible confirm require
+   `regenerable < 0.6`. On the 141-decision sample confirms went 18 → 14 with the
+   four build/repack confirms suppressed and every destructive/secret confirm
+   kept. This is an addition to the SDD 9.3 question list, made per SDD 7.2
+   (split an ambiguous judgment into atomic questions); acceptance was unchanged.
 
 Each is a number change or a config-driven rule; none rewrote a prompt. Re-run
 `sweep.ts` and `evaluate.ts` after any `questions.ts` or threshold edit.

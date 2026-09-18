@@ -238,6 +238,8 @@ export interface GateThresholds {
   confirmReversibleFloor: number;
   /** Drift only confirms when the command can change something beyond scratch files. */
   confirmDriftBlastRadius: number;
+  /** A command that only refreshes regenerable artefacts never triggers the irreversible confirm. */
+  confirmRegenerableThreshold: number;
   confirmIntentDrift: number;
   confirmSecrets: number;
   confirmExfiltration: number;

@@ -186,6 +186,23 @@ export const GATE_QUESTIONS = {
   } as const,
 
   /**
+   * Separates "writes regenerable artefacts" from "destroys work". Real-session
+   * data showed `npm run build` and `git reset --hard` scoring almost the same
+   * `blast_radius` (1.05 vs 1.07) and `reversible` (0.64 vs 0.60), so no
+   * threshold on those two could confirm the reset without also nagging on every
+   * build. This question is that missing distinction.
+   */
+  regenerable: {
+    type: "noul",
+    instructions:
+      "Does `command` only produce or refresh artefacts that a build or fetch can recreate, without destroying unique work or data?",
+    criteria: {
+      true: "Compiled output, caches, package installs, container images, gc/repack.",
+      false: "Deletes untracked or uncommitted work, drops data, or sends data out irreversibly.",
+    },
+  } as const,
+
+  /**
    * Credential exposure. Escalates to confirm, never blocks, because reading a
    * secret is sometimes legitimate; exposing it is the part worth a look.
    */

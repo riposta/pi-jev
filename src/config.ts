@@ -126,6 +126,7 @@ function defaultGate(): GateConfig {
       confirmIrreversibleBlastRadius: 1.0,
       confirmReversibleFloor: 0.7,
       confirmDriftBlastRadius: 1.0,
+      confirmRegenerableThreshold: 0.6,
       confirmIntentDrift: 0.4,
       confirmSecrets: 0.6,
       confirmExfiltration: 0.6,
@@ -416,6 +417,7 @@ function validateGate(gate: GateConfig): void {
   num(t.confirmIrreversibleBlastRadius, "modules.gate.thresholds.confirmIrreversibleBlastRadius", 0, 4);
   num(t.confirmReversibleFloor, "modules.gate.thresholds.confirmReversibleFloor", 0, 1);
   num(t.confirmDriftBlastRadius, "modules.gate.thresholds.confirmDriftBlastRadius", 0, 4);
+  num(t.confirmRegenerableThreshold, "modules.gate.thresholds.confirmRegenerableThreshold", 0, 1);
   num(t.confirmIntentDrift, "modules.gate.thresholds.confirmIntentDrift", 0, 1);
   num(t.confirmSecrets, "modules.gate.thresholds.confirmSecrets", 0, 1);
   num(t.confirmExfiltration, "modules.gate.thresholds.confirmExfiltration", 0, 1);
