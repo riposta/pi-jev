@@ -21,7 +21,7 @@ Five independently switchable modules, one request per hook, shadow mode by defa
 | 2 | `gate` | implemented, shadow; `block` opt-in |
 | 3 | `shield` | implemented, shadow |
 | 4 | `prune` + `watchdog` | implemented, disabled by default |
-| 5 | release + measured numbers | fixtures measured; published as npm `@riposta/pi-jev@0.1.0` and installable from git |
+| 5 | release + measured numbers | fixtures measured; published on npm as `@riposta/pi-jev` (Trusted Publishing from GitHub Actions) and installable from git |
 
 Every module ships in **shadow mode**: it classifies, logs the counterfactual
 decision, and changes nothing until you promote it. See [Promoting a module](#promoting-a-module).

@@ -839,7 +839,8 @@ Each phase has an exit criterion. A phase is not done because the code compiles.
 
 `[updated]` Phases 0–4 are implemented and calibrated; the measured exit numbers
 are in [`../README.md`](../README.md) and [`calibration.md`](calibration.md).
-Phase 5 (publish) is pending.
+Phase 5 is done: `@riposta/pi-jev` is published on npm (Trusted Publishing from
+GitHub Actions, no long-lived token) and installable from git.
 
 ### Phase 0 — Skeleton
 
@@ -873,7 +874,7 @@ The experimental pair. Both ship disabled by default.
 
 ### Phase 5 — Release
 
-README with honest numbers from our own fixtures, published as a Pi package installable via `pi install git:github.com/riposta/pi-jev` and npm, plus a short write-up of what the calibration data showed.
+README with honest numbers from our own fixtures, published as a Pi package installable via `pi install npm:@riposta/pi-jev` (or `pi install git:github.com/riposta/pi-jev`), plus a short write-up of what the calibration data showed. The npm scope is `@riposta`; the unscoped `pi-jev` name belongs to an unrelated project.
 
 ### Sequencing note
 
