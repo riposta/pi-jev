@@ -1,6 +1,6 @@
 # Initial plan — pi-jev: a Jev classification layer for the Pi coding agent
 
-2026-09-18 · @Adam Dąbrowski
+2026-09-18 · @riposta
 
 > **Status.** This is the original design, kept for reference. The implementation
 > and the measured calibration have since diverged in a few places; every change
