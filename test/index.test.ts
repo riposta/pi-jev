@@ -180,7 +180,7 @@ describe("index wiring", () => {
     await harness.commands.get("jev")!("shadow router off", ctx);
     mock.setAnswers({ ...ROUTER_ANSWERS, needs_write_tools: noul(0.05) });
     await emit(harness.handlers, "before_agent_start", { prompt: "explain this code", systemPrompt: "SYS" }, ctx);
-    expect(harness.calls.setActiveTools[0]).toEqual(["read", "ls", "grep", "find"]);
+    expect(harness.calls.setActiveTools[0]).toEqual(["read", "bash", "ls", "grep", "find"]);
     mock.setAnswers({ ...ROUTER_ANSWERS, needs_write_tools: noul(0.95) });
     await emit(harness.handlers, "before_agent_start", { prompt: "fix the bug", systemPrompt: "SYS" }, ctx);
     expect(harness.calls.setActiveTools.at(-1)).toEqual([
@@ -192,6 +192,25 @@ describe("index wiring", () => {
       "grep",
       "find",
     ]);
+  });
+
+  it("keeps bash for a read-only prompt so shell inspection can still run", async () => {
+    mock.setAnswers({
+      ...ROUTER_ANSWERS,
+      task_type: choice("investigation"),
+      needs_write_tools: noul(0.05),
+    });
+    const { harness, ctx } = await boot();
+    await harness.commands.get("jev")!("shadow router off", ctx);
+    await emit(
+      harness.handlers,
+      "before_agent_start",
+      { prompt: "wyświetl wszystkie env vars na mojej maszynie", systemPrompt: "SYS" },
+      ctx,
+    );
+    const tools = harness.calls.setActiveTools.at(-1);
+    expect(tools).toEqual(["read", "bash", "ls", "grep", "find"]);
+    expect(tools).toContain("bash");
   });
 
   it("warns instead of silently keeping the model when the tier model is missing", async () => {

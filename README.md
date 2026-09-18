@@ -210,6 +210,13 @@ directly; the configured `tiers` stay as the fallback when the list is empty or
 the answer is missing. A configured tier whose provider/model is not installed
 in Pi is reported once instead of failing silently.
 
+When the router judges a prompt read-only it narrows the loadout to `read`,
+`bash`, `ls`, `grep` and `find` — `bash` stays because shell is how read-only
+work gets done (`printenv`, `git log`, a test run), and the gate still
+classifies every shell command. The full loadout is restored on the next
+write-capable prompt. Set `modules.router.readOnlyThreshold` to `0` to disable
+the narrowing entirely.
+
 ### Promoting a module
 
 1. Run in shadow long enough to collect data (target: 200+ router decisions,

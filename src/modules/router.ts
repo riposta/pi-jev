@@ -32,8 +32,13 @@ export type RouterDecisionInput = Pick<
   "task_type" | "reasoning_needed" | "is_underspecified" | "needs_write_tools" | "touches_sensitive"
 >;
 
-/** Tools that cannot modify the repository. Used when write work is unlikely. */
-export const READ_ONLY_TOOLS: readonly string[] = ["read", "ls", "grep", "find"];
+/**
+ * Loadout for work that is unlikely to write. It removes the direct mutators
+ * (`write`, `edit`) but keeps `bash`: shell is how read-only tasks actually get
+ * done (`printenv`, `git log`, a test run), and every shell command is still
+ * classified by the gate. Stripping `bash` made "show me the env" impossible.
+ */
+export const READ_ONLY_TOOLS: readonly string[] = ["read", "bash", "ls", "grep", "find"];
 
 /** Appended to the system prompt when the request is underspecified. */
 export const CLARIFY_DIRECTIVE =
