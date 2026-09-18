@@ -113,7 +113,7 @@ export function decideGate(answers: GateAnswers, config: Config): GateDecision {
       numbers,
     };
   }
-  if (intent < t.confirmIntentDrift) {
+  if (intent < t.confirmIntentDrift && blast >= t.confirmDriftBlastRadius) {
     return { outcome: "confirm", rule: 3, reason: `outside the original request (${intent.toFixed(2)})`, numbers };
   }
   if (blast >= t.confirmBlastRadius) {

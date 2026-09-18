@@ -42,9 +42,13 @@ describe("gate decision table (SDD 9.4)", () => {
     expect(decideGate(answers({ blast_radius: score(2.9), reversible: noul(0.1) }), makeConfig()).rule).toBe(4);
   });
 
-  it("row 3: confirms drift from the original request", () => {
-    expect(decideGate(answers({ matches_intent: noul(0.39) }), makeConfig())).toMatchObject({ outcome: "confirm", rule: 3 });
-    expect(decideGate(answers({ matches_intent: noul(0.4) }), makeConfig()).rule).toBe(7);
+  it("row 3: confirms drift from the original request when it can change something", () => {
+    expect(
+      decideGate(answers({ matches_intent: noul(0.39), blast_radius: score(1.2) }), makeConfig()),
+    ).toMatchObject({ outcome: "confirm", rule: 3 });
+    // a read-only detour is not drift (blast radius 0)
+    expect(decideGate(answers({ matches_intent: noul(0.1), blast_radius: score(0.2) }), makeConfig()).rule).toBe(7);
+    expect(decideGate(answers({ matches_intent: noul(0.4), blast_radius: score(1.2) }), makeConfig()).rule).toBe(7);
   });
 
   it("row 4: confirms a shared-resource blast radius", () => {

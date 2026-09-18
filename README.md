@@ -342,6 +342,13 @@ the defaults in this repository:
    (SDD 8.2); this cuts ~18% of router input tokens. Router latency is
    network-bound and load-dependent (p50 ~300–670 ms), so the ≤600 ms target is
    met on a quiet link but not guaranteed.
+5. **Drift confirmed on read-only exploration.** In a real-session sample, three
+   ordinary exploration commands (`cat package.json`, `find …`) scored
+   `matches_intent` 0.23–0.29 and so triggered the drift confirm, even though
+   their blast radius was 0. The SDD's drift example is mutating, so rule 3 is
+   now gated on `blast_radius ≥ 1.0` (`confirmDriftBlastRadius`): read-only
+   detours no longer confirm, mutating ones still do. Safe-local false confirms
+   in that sample went from 3/9 to 0/9. See [`docs/calibration.md`](docs/calibration.md).
 
 Each is a number change or a config-driven rule; none rewrote a prompt. Re-run
 `sweep.ts` and `evaluate.ts` after any `questions.ts` or threshold edit.
@@ -353,7 +360,7 @@ src/            index, config, questions, client, redact, telemetry, types, modu
 tools/          calibrate.ts, replay.ts, evaluate.ts, sweep.ts
 fixtures/       prompts.jsonl, commands.jsonl, injections.jsonl
 examples/       jev.json
-docs/           SDD.md
+docs/           SDD.md, calibration.md
 test/           unit, client integration, and index wiring tests
 test/pi/        real-Pi end-to-end harness (mock model + mock Jev servers)
 ```

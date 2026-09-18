@@ -61,6 +61,7 @@
         "confirmBlastRadius": 2.0,
         "confirmIrreversibleBlastRadius": 1.0,
         "confirmReversibleFloor": 0.7,
+        "confirmDriftBlastRadius": 1.0,
         "confirmIntentDrift": 0.4,
         "confirmSecrets": 0.6,
         "confirmExfiltration": 0.6,

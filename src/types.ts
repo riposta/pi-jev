@@ -236,6 +236,8 @@ export interface GateThresholds {
   /** Confirm when the command is not cleanly reversible and reaches beyond scratch files. */
   confirmIrreversibleBlastRadius: number;
   confirmReversibleFloor: number;
+  /** Drift only confirms when the command can change something beyond scratch files. */
+  confirmDriftBlastRadius: number;
   confirmIntentDrift: number;
   confirmSecrets: number;
   confirmExfiltration: number;
