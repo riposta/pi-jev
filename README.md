@@ -348,7 +348,10 @@ the defaults in this repository:
    their blast radius was 0. The SDD's drift example is mutating, so rule 3 is
    now gated on `blast_radius ≥ 1.0` (`confirmDriftBlastRadius`): read-only
    detours no longer confirm, mutating ones still do. Safe-local false confirms
-   in that sample went from 3/9 to 0/9. See [`docs/calibration.md`](docs/calibration.md).
+   went from 3/9 to 0/9, and to **0/24 on a 141-decision sample**. That larger
+   sample also showed build commands (`npm run build`, `make`, `docker build`)
+   triggering the irreversible confirm; [`docs/calibration.md`](docs/calibration.md)
+   records it as friction to re-validate once labelled data exists.
 
 Each is a number change or a config-driven rule; none rewrote a prompt. Re-run
 `sweep.ts` and `evaluate.ts` after any `questions.ts` or threshold edit.
