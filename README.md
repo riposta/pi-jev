@@ -112,11 +112,39 @@ pi -e ./src/index.ts
 pi install /absolute/path/to/pi-jev
 ```
 
+Update a published install later with `pi update npm:@riposta/pi-jev`.
+
 Every module starts in shadow mode, so installing it changes nothing until you
 promote one (see [Promoting a module](#promoting-a-module)).
 
 `pi-jev` sends metadata and sampled tool output to `api.typesafe.ai`. Read
 [Privacy](#privacy) before enabling it on a repository you care about.
+
+## Commands
+
+Everything lives under `/jev`. Run it with no arguments for the status summary.
+
+| Command | Scope | Does |
+| --- | --- | --- |
+| `/jev` | — | Status: the status line, active model and `QUESTIONS_VERSION`, each module's `off` / `shadow` / `live` state, and request/token/cost usage. An unknown subcommand prints the same summary. |
+| `/jev explain` | — | The most recent classification (any hook): every answer with its probability or score, the decision, the threshold/reason that fired, latency and token usage. |
+| `/jev shadow <module> on\|off` | session | Toggles shadow for one module: `router`, `gate`, `shield`, `prune` or `watchdog`. In shadow, the module classifies and logs but changes nothing (`[shadow]` + `wouldHaveBeen` in the log). |
+| `/jev off` | session | Whole-layer kill switch: every hook becomes a no-op until the session ends. |
+| `/jev on` | session | Re-enables the layer for the session. |
+| `/jev stats [days]` | — | Reads `<telemetry.dir>/*.jsonl` for the last `days` (default `1`) and prints the decision mix, gate confirm labels (`allow`/`deny`/`unknown`) and cache hits. |
+
+`shadow` and `off`/`on` are **session-only**; they are not written to config. To
+make a change permanent, set `modules.<name>.shadow` (or `enabled`) in
+`~/.pi/agent/jev.json`, or `.pi/jev.json` in a trusted project. The status line
+shows `jev <tier> · <n> req · <cost|tokens>` and degrades to `jev off — <reason>`
+on failure.
+
+```text
+/jev                  # status + usage
+/jev explain          # why the last decision happened
+/jev shadow gate off  # promote the gate for this session
+/jev stats 7          # decision mix from the last week
+```
 
 ## How it works
 
@@ -255,19 +283,6 @@ node --experimental-strip-types tools/labels.ts .pi/jev-log --sweep confirmBlast
 commands you denied. With `--sweep` it replays the recorded answers and shows how
 the deny rate moves as a threshold changes. Target 300+ gate decisions before
 touching the numbers (initial_plan.md §13.3). Nothing is blocked while `allowBlock` is false.
-
-## Commands
-
-| Command | Does |
-| --- | --- |
-| `/jev` | module status, shadow flags, request count, token/cost usage |
-| `/jev explain` | the last decision with its probabilities and the threshold that fired |
-| `/jev shadow <module> on\|off` | toggle shadow for one module, this session only |
-| `/jev off` / `/jev on` | disable or enable the whole layer for the session |
-| `/jev stats [days]` | decision mix and gate labels from the local log |
-
-The status line shows `jev <tier> · <n> req · <cost|tokens>` and degrades to
-`jev off — <reason>` on failure.
 
 ## Privacy
 
