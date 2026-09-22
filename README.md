@@ -135,6 +135,10 @@ Everything lives under `/jev`. Run it with no arguments for the status summary.
 | `/jev trace [n]` | — | Prints the last `n` decisions (default `5`), one line each. |
 | `/jev recommend` | — | Reads the gate labels from the log and suggests whether to relax the confirm thresholds. |
 
+With `telemetry.traceWidget` (or `PI_JEV_TRACE_WIDGET=1`), the interactive UI
+shows a live widget of the last eight decisions under the editor — the same
+one-liners `/jev trace` prints.
+
 `shadow` and `off`/`on` are **session-only**; they are not written to config. To
 make a change permanent, set `modules.<name>.shadow` (or `enabled`) in
 `~/.pi/agent/jev.json`, or `.pi/jev.json` in a trusted project. The status line
@@ -200,7 +204,8 @@ Environment overrides: `PI_JEV_MODEL`, `PI_JEV_BASE_URL`, `PI_JEV_API_KEY_ENV`,
 `PI_JEV_LOG_DIR`, `PI_JEV_LOG_STATE_CONTENT`, `PI_JEV_OFF`,
 `PI_JEV_<MODULE>_ENABLED`, `PI_JEV_<MODULE>_SHADOW`, `PI_JEV_<MODULE>_TIMEOUT_MS`,
 `PI_JEV_GATE_FASTPATH_ENABLED`, `PI_JEV_GATE_RULES_ENABLED`,
-`PI_JEV_WATCHDOG_REQUIRE_EVIDENCE`, `PI_JEV_MAX_REQUESTS`, `PI_JEV_MAX_TOKENS`.
+`PI_JEV_WATCHDOG_REQUIRE_EVIDENCE`, `PI_JEV_TRACE_WIDGET`,
+`PI_JEV_MAX_REQUESTS`, `PI_JEV_MAX_TOKENS`.
 
 ### Timeouts, budget and failure
 
@@ -335,7 +340,7 @@ setting is available for the TypeSafe side of the traffic.
 ## Testing
 
 ```bash
-npm test          # 178 unit + integration tests, no network
+npm test          # 179 unit + integration tests, no network
 npm run typecheck
 npm run test:coverage
 npm run test:pi   # end-to-end against the real `pi` CLI (needs pi >= 0.85 on PATH)
@@ -517,6 +522,11 @@ test/pi/        real-Pi end-to-end harness (mock model + mock Jev servers)
   sensitive content and is gated on that answer.
 - The extension is Pi-only. The question catalogue is portable; the hook bindings
   are not.
+- No subagent/background-task triage: Pi's extension API (as of 0.85) does not
+  expose subagent or background-task events, so there is no hook to judge
+  child-task reports. Runaway detection and the evidence-based done-check cover
+  the observable symptoms; a real subagent guard needs a Pi hook that does not
+  exist yet.
 
 ## Licence
 

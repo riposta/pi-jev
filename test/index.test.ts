@@ -261,6 +261,15 @@ describe("index wiring", () => {
     expect(String(sent?.message?.content)).toContain("project rule");
   });
 
+  it("renders a live trace widget when enabled", async () => {
+    vi.stubEnv("PI_JEV_TRACE_WIDGET", "true");
+    const { harness, ctx } = await boot();
+    await emit(harness.handlers, "before_agent_start", { prompt: "add a feature", systemPrompt: "SYS" }, ctx);
+    const call = (ctx.ui.setWidget.mock.calls as unknown[][]).find((entry) => entry[0] === "jev-trace");
+    expect(call).toBeTruthy();
+    expect(call?.[1]).toEqual(expect.arrayContaining([expect.stringContaining("router")]));
+  });
+
   it("serves /jev explain, trace and recommend", async () => {
     const { harness, ctx } = await boot();
     await harness.commands.get("jev")!("explain gate", ctx);

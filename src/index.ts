@@ -79,6 +79,17 @@ export default function piJev(pi: ExtensionAPI): void {
   let currentCtx: ExtensionContext | undefined;
   let configured = false;
 
+  const MAX_TRACE = 8;
+  const traceLines: string[] = [];
+
+  function refreshWidget(): void {
+    if (!config.telemetry.traceWidget) return;
+    const lines = traceLines.slice(-MAX_TRACE);
+    currentCtx?.ui.setWidget("jev-trace", lines.length > 0 ? lines : undefined, {
+      placement: "belowEditor",
+    });
+  }
+
   const ask: AskFn = (hook, rawState, questions, opts) =>
     client ? client.ask(hook, rawState, questions, opts) : Promise.resolve(null);
 
@@ -101,6 +112,16 @@ export default function piJev(pi: ExtensionAPI): void {
       };
       if (!config.telemetry.logStateContent) delete stamped.state;
       pi.appendEntry("jev-decision", stamped);
+      const line = `${stamped.hook}${stamped.tool ? ` ${stamped.tool}` : ""}: ${stamped.decision}${
+        stamped.shadow ? " [shadow]" : ""
+      }${
+        stamped.wouldHaveBeen && stamped.wouldHaveBeen !== stamped.decision
+          ? ` → ${stamped.wouldHaveBeen}`
+          : ""
+      }`;
+      traceLines.push(line);
+      if (traceLines.length > MAX_TRACE) traceLines.shift();
+      refreshWidget();
     },
     state,
     status: (text) => currentCtx?.ui.setStatus("jev", text),
@@ -155,6 +176,7 @@ export default function piJev(pi: ExtensionAPI): void {
     state.activeTier = undefined;
     for (const module of MODULES) state.shadow[module] = config.modules[module].shadow;
     state.sessionId = sessionId(ctx);
+    traceLines.length = 0;
 
     try {
       const customPatterns = resolveCustomPatterns(config, ctx.cwd);
@@ -195,6 +217,7 @@ export default function piJev(pi: ExtensionAPI): void {
 
   pi.on("session_shutdown", (_event, ctx) => {
     ctx.ui.setStatus("jev", undefined);
+    ctx.ui.setWidget("jev-trace", undefined);
   });
 
   /* ---------------------------------------------------------------------- */

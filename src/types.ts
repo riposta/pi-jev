@@ -398,6 +398,8 @@ export interface TelemetryConfig {
   logStateHash: boolean;
   /** Off by default: logs hold hashes, not prompts. */
   logStateContent: boolean;
+  /** Show a live widget with the most recent decisions in the interactive UI. */
+  traceWidget: boolean;
 }
 
 export interface Config {

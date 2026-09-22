@@ -226,6 +226,7 @@ export function defaultConfig(): Config {
       logProbabilities: true,
       logStateHash: true,
       logStateContent: false,
+      traceWidget: false,
     },
   };
 }
@@ -311,6 +312,8 @@ function applyEnv(config: Config, env: NodeJS.ProcessEnv): Config {
   if (env.PI_JEV_LOG_DIR) next.telemetry.dir = env.PI_JEV_LOG_DIR;
   const logStateContent = envBool(env.PI_JEV_LOG_STATE_CONTENT);
   if (logStateContent !== undefined) next.telemetry.logStateContent = logStateContent;
+  const traceWidget = envBool(env.PI_JEV_TRACE_WIDGET);
+  if (traceWidget !== undefined) next.telemetry.traceWidget = traceWidget;
   const off = envBool(env.PI_JEV_OFF);
   if (off) {
     for (const module of Object.values(next.modules)) module.enabled = false;
@@ -555,6 +558,7 @@ export function validateConfig(config: Config): void {
   bool(config.telemetry.logProbabilities, "telemetry.logProbabilities");
   bool(config.telemetry.logStateHash, "telemetry.logStateHash");
   bool(config.telemetry.logStateContent, "telemetry.logStateContent");
+  bool(config.telemetry.traceWidget, "telemetry.traceWidget");
 }
 
 /** Effective allowlist used by the gate; exported so the tests read the same list. */
