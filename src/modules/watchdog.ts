@@ -13,17 +13,34 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { WATCHDOG_QUESTIONS } from "../questions.ts";
 import type { Answers, Config, Deps, WatchdogDecision } from "../types.ts";
-import { summariseTurn, type SummarisedTurn } from "../messages.ts";
+import { summariseTurn, messageText, type SummarisedTurn } from "../messages.ts";
 import { formatStatus } from "../telemetry.ts";
 
 export type WatchdogAnswers = Answers<typeof WATCHDOG_QUESTIONS>;
 
 const MAX_TURNS_IN_STATE = 6;
 
+/** Commands that produce verification evidence. */
+const EVIDENCE_COMMAND =
+  /\b(?:(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?(?:test|build|lint|typecheck|check|verify)|pytest|vitest|jest|tsc|go\s+test|cargo\s+(?:test|check)|make|gradle|mvn|dotnet\s+(?:test|build))\b/;
+
+/** A completion claim, matched in code so it works without a second judgment. */
+const DONE_CLAIM = /\b(?:done|finished|complete[d]?|all set|that'?s it|implemented|fixed)\b/i;
+
+export function claimsCompletion(text: string): boolean {
+  return DONE_CLAIM.test(text);
+}
+
+export function commandIsEvidence(command: string): boolean {
+  return EVIDENCE_COMMAND.test(command);
+}
+
 export interface WatchdogState {
   user_request: string;
   recent_turns: SummarisedTurn[];
   turn_index: number;
+  /** Whether a test/build/lint ran, or a written file was read back. */
+  evidence: boolean;
 }
 
 export function evaluateWatchdog(answers: WatchdogAnswers, config: Config): WatchdogDecision {
@@ -55,9 +72,31 @@ export function register(pi: ExtensionAPI, deps: Deps): void {
   let userRequest = "";
   let turnIndex = 0;
   const recentTurns: SummarisedTurn[] = [];
+  let commandEvidence = false;
+  const writtenFiles = new Set<string>();
+  const readFiles = new Set<string>();
+
+  pi.on("session_start", () => {
+    commandEvidence = false;
+    writtenFiles.clear();
+    readFiles.clear();
+  });
 
   pi.on("before_agent_start", (event) => {
     userRequest = event.prompt;
+  });
+
+  pi.on("tool_call", (event) => {
+    const input = event.input as Record<string, unknown>;
+    if (event.toolName === "bash" && typeof input.command === "string" && commandIsEvidence(input.command)) {
+      commandEvidence = true;
+    }
+    if ((event.toolName === "write" || event.toolName === "edit") && typeof input.path === "string") {
+      writtenFiles.add(input.path);
+    }
+    if (event.toolName === "read" && typeof input.path === "string") {
+      readFiles.add(input.path);
+    }
   });
 
   pi.on("turn_end", async (event, ctx) => {
@@ -71,10 +110,12 @@ export function register(pi: ExtensionAPI, deps: Deps): void {
     if (turnIndex < cfg.minTurns) return;
     if (turnIndex % cfg.everyNTurns !== 0) return;
 
+    const evidence = commandEvidence || [...writtenFiles].some((file) => readFiles.has(file));
     const state: WatchdogState = {
       user_request: userRequest,
       recent_turns: [...recentTurns],
       turn_index: turnIndex,
+      evidence,
     };
 
     const result = await deps.ask("watchdog", state, WATCHDOG_QUESTIONS, { signal: ctx.signal });
@@ -91,6 +132,12 @@ export function register(pi: ExtensionAPI, deps: Deps): void {
     }
 
     const decision = evaluateWatchdog(result.answers, deps.config);
+    // A completion claim with no test/build/lint and no read-back is a
+    // false-done regardless of what the classifier said (TypeSafe: keep
+    // judgments code can make exactly out of the model).
+    if (cfg.requireEvidence && !evidence && claimsCompletion(messageText(event.message))) {
+      decision.falseDone = true;
+    }
     const shadow = deps.state.shadow.watchdog;
     const record = {
       hook: "watchdog" as const,
@@ -104,7 +151,8 @@ export function register(pi: ExtensionAPI, deps: Deps): void {
       latencyMs: result.meta.latencyMs,
       cached: result.meta.cached,
       usage: result.meta.usage,
-      detail: { progress: decision.progress, turn: turnIndex },
+      answeredModel: result.meta.answeredModel,
+      detail: { progress: decision.progress, turn: turnIndex, evidence },
     };
     deps.log(record);
     deps.appendEntry(record);

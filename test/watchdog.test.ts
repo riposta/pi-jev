@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { evaluateWatchdog, loopMessage, verifyMessage, type WatchdogAnswers } from "../src/modules/watchdog.ts";
+import {
+  claimsCompletion,
+  commandIsEvidence,
+  evaluateWatchdog,
+  loopMessage,
+  verifyMessage,
+  type WatchdogAnswers,
+} from "../src/modules/watchdog.ts";
 import { summariseTurn, firstLine, errorLines } from "../src/messages.ts";
 import { makeConfig, noul, score } from "./helpers.ts";
 
@@ -30,6 +37,21 @@ describe("watchdog decision", () => {
   it("has actionable injection text", () => {
     expect(loopMessage()).toContain("loop");
     expect(verifyMessage()).toContain("verification");
+  });
+});
+
+describe("evidence-based done check", () => {
+  it("recognises verification commands", () => {
+    expect(commandIsEvidence("npm test")).toBe(true);
+    expect(commandIsEvidence("pnpm run build")).toBe(true);
+    expect(commandIsEvidence("pytest -q")).toBe(true);
+    expect(commandIsEvidence("git status")).toBe(false);
+  });
+
+  it("recognises completion claims", () => {
+    expect(claimsCompletion("Done — the feature is implemented.")).toBe(true);
+    expect(claimsCompletion("All set.")).toBe(true);
+    expect(claimsCompletion("I am still investigating.")).toBe(false);
   });
 });
 

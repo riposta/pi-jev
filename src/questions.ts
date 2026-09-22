@@ -20,7 +20,7 @@
 
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import type { QuestionSet } from "./types.ts";
+import type { Question, QuestionSet } from "./types.ts";
 
 /* -------------------------------------------------------------------------- */
 /* router — once per user prompt                                              */
@@ -179,6 +179,54 @@ export function withModelChoice(base: QuestionSet, models: readonly ModelOption[
       criteria: Object.fromEntries(models.map((model) => [model.key, model.description])),
     },
   };
+}
+
+/**
+ * The router question set with a Choice over the local skill catalog. `none` is
+ * first so the classifier has an explicit way to say no skill fits
+ * (initial_plan.md §8.2, speculative fan-out).
+ */
+export function withSkillChoice(base: QuestionSet, skills: readonly ModelOption[]): QuestionSet {
+  if (skills.length === 0) return base;
+  return {
+    ...base,
+    target_skill: {
+      type: "choice",
+      instructions:
+        "If exactly one of `available_skills` is clearly needed for `prompt`, pick it; otherwise pick `none`. Do not pick a skill for ordinary coding work that needs no special procedure.",
+      criteria: Object.fromEntries([
+        ["none", "No listed skill is clearly needed."],
+        ...skills.map((skill) => [skill.key, skill.description]),
+      ]),
+    },
+  };
+}
+
+/** One project rule, indexed to match `project_rules[i]` in the gate state. */
+export interface RuleQuestionSeed {
+  key: string;
+  index: number;
+}
+
+/**
+ * Adds one Noul per project rule for a gate request that carries a proposed
+ * change. Instructions stay static and point at `project_rules[i]` in state, so
+ * no project-authored text is interpolated into the question definition
+ * (initial_plan.md §7.1). Speculative fan-out: the extra questions ride along in
+ * the gate's single request.
+ */
+export function withRuleQuestions(base: QuestionSet, rules: readonly RuleQuestionSeed[]): QuestionSet {
+  if (rules.length === 0) return base;
+  const extra: Record<string, Question> = {};
+  for (const rule of rules) {
+    extra[rule.key] = {
+      type: "noul",
+      instructions:
+        `Does \`change\` violate the project rule \`project_rules[${rule.index}]\`? ` +
+        "Judge only that rule; unrelated concerns are not a violation.",
+    };
+  }
+  return { ...base, ...extra };
 }
 
 /* -------------------------------------------------------------------------- */

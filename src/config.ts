@@ -95,6 +95,8 @@ function defaultRouter(): RouterConfig {
     reasoningDropScore: 0,
     reasoningConfidenceFloor: 0,
     skillRouting: false,
+    skillSuggestion: false,
+    skillsDirs: [],
     thinkingBands: [
       { max: 0.75, level: "off" },
       { max: 1.5, level: "low" },
@@ -118,6 +120,17 @@ function defaultGate(): GateConfig {
     allowBlock: false,
     onFailure: "allow",
     withoutUi: "deny",
+    confirmMode: "ask",
+    // Obvious cases (force push, recursive rm, DROP) are decided in code, so
+    // the gate works offline and does not pay Jev to recognize them.
+    fastPath: { enabled: true, block: false },
+    rules: {
+      enabled: false,
+      files: ["AGENTS.md", "CLAUDE.md", ".pi/rules.md", "pi-jev.md"],
+      maxRules: 10,
+      violationThreshold: 0.6,
+      onViolation: "steer",
+    },
     thresholds: {
       blockBlastRadius: 3.0,
       blockReversible: 0.3,
@@ -148,6 +161,7 @@ function defaultShield(): ShieldConfig {
     injectionThreshold: 0.7,
     secretThreshold: 0.6,
     personalDataThreshold: 0.6,
+    deterministicInjection: true,
   };
 }
 
@@ -170,6 +184,7 @@ function defaultWatchdog(): WatchdogConfig {
     minTurns: 6,
     loopThreshold: 0.75,
     falseDoneThreshold: 0.7,
+    requireEvidence: true,
   };
 }
 
@@ -182,7 +197,8 @@ export function defaultConfig(): Config {
       maxRequestsPerSession: 200,
       maxTokensPerSession: 400_000,
       onBreach: "disable",
-      inputPricePerMTok: 0,
+      // TypeSafe's published Jev pricing: $0.042 / MTok input, output free.
+      inputPricePerMTok: 0.042,
       outputPricePerMTok: 0,
     },
     residency: {
@@ -193,6 +209,9 @@ export function defaultConfig(): Config {
     redaction: {
       patterns: "default",
       maxStateChars: 120_000,
+      // 32k tokens is Jev's `state + longest question` ceiling; 32k * ~4 chars
+      // is the equivalent character budget.
+      maxStateTokens: 32_000,
     },
     modules: {
       router: defaultRouter(),
@@ -304,6 +323,12 @@ function applyEnv(config: Config, env: NodeJS.ProcessEnv): Config {
     const timeout = envNumber(env[`PI_JEV_${name.toUpperCase()}_TIMEOUT_MS`], `PI_JEV_${name.toUpperCase()}_TIMEOUT_MS`);
     if (timeout !== undefined) next.modules[name].timeoutMs = timeout;
   }
+  const fastPath = envBool(env.PI_JEV_GATE_FASTPATH_ENABLED);
+  if (fastPath !== undefined) next.modules.gate.fastPath.enabled = fastPath;
+  const rules = envBool(env.PI_JEV_GATE_RULES_ENABLED);
+  if (rules !== undefined) next.modules.gate.rules.enabled = rules;
+  const requireEvidence = envBool(env.PI_JEV_WATCHDOG_REQUIRE_EVIDENCE);
+  if (requireEvidence !== undefined) next.modules.watchdog.requireEvidence = requireEvidence;
   const maxRequests = envNumber(env.PI_JEV_MAX_REQUESTS, "PI_JEV_MAX_REQUESTS");
   if (maxRequests !== undefined) next.budget.maxRequestsPerSession = maxRequests;
   const maxTokens = envNumber(env.PI_JEV_MAX_TOKENS, "PI_JEV_MAX_TOKENS");
@@ -379,6 +404,10 @@ function validateRouter(router: RouterConfig): void {
   num(router.reasoningDropScore, "modules.router.reasoningDropScore", 0, 3);
   num(router.reasoningConfidenceFloor, "modules.router.reasoningConfidenceFloor", 0, 1);
   bool(router.skillRouting, "modules.router.skillRouting");
+  bool(router.skillSuggestion, "modules.router.skillSuggestion");
+  if (!Array.isArray(router.skillsDirs) || router.skillsDirs.some((entry) => typeof entry !== "string")) {
+    throw new ConfigError("modules.router.skillsDirs must be an array of strings");
+  }
   if (!Array.isArray(router.thinkingBands) || router.thinkingBands.length === 0) {
     throw new ConfigError("modules.router.thinkingBands must be a non-empty array");
   }
@@ -416,6 +445,20 @@ function validateGate(gate: GateConfig): void {
   if (!["deny", "allow-with-log"].includes(gate.withoutUi)) {
     throw new ConfigError('modules.gate.withoutUi must be "deny" or "allow-with-log"');
   }
+  if (!["ask", "steer"].includes(gate.confirmMode)) {
+    throw new ConfigError('modules.gate.confirmMode must be "ask" or "steer"');
+  }
+  bool(gate.fastPath.enabled, "modules.gate.fastPath.enabled");
+  bool(gate.fastPath.block, "modules.gate.fastPath.block");
+  bool(gate.rules.enabled, "modules.gate.rules.enabled");
+  if (!Array.isArray(gate.rules.files) || gate.rules.files.some((entry) => typeof entry !== "string")) {
+    throw new ConfigError("modules.gate.rules.files must be an array of strings");
+  }
+  num(gate.rules.maxRules, "modules.gate.rules.maxRules", 0, 255);
+  num(gate.rules.violationThreshold, "modules.gate.rules.violationThreshold", 0, 1);
+  if (!["steer", "confirm", "block"].includes(gate.rules.onViolation)) {
+    throw new ConfigError('modules.gate.rules.onViolation must be "steer", "confirm" or "block"');
+  }
   const t = gate.thresholds;
   num(t.blockBlastRadius, "modules.gate.thresholds.blockBlastRadius", 0, 4);
   num(t.blockReversible, "modules.gate.thresholds.blockReversible", 0, 1);
@@ -445,6 +488,7 @@ function validateShield(shield: ShieldConfig): void {
   num(shield.injectionThreshold, "modules.shield.injectionThreshold", 0, 1);
   num(shield.secretThreshold, "modules.shield.secretThreshold", 0, 1);
   num(shield.personalDataThreshold, "modules.shield.personalDataThreshold", 0, 1);
+  bool(shield.deterministicInjection, "modules.shield.deterministicInjection");
 }
 
 function validatePrune(prune: PruneConfig): void {
@@ -463,6 +507,7 @@ function validateWatchdog(watchdog: WatchdogConfig): void {
   num(watchdog.minTurns, "modules.watchdog.minTurns", 0);
   num(watchdog.loopThreshold, "modules.watchdog.loopThreshold", 0, 1);
   num(watchdog.falseDoneThreshold, "modules.watchdog.falseDoneThreshold", 0, 1);
+  bool(watchdog.requireEvidence, "modules.watchdog.requireEvidence");
 }
 
 export function validateConfig(config: Config): void {
@@ -498,6 +543,7 @@ export function validateConfig(config: Config): void {
   validatePrune(config.modules.prune);
   validateWatchdog(config.modules.watchdog);
   num(config.redaction.maxStateChars, "redaction.maxStateChars", 1);
+  num(config.redaction.maxStateTokens, "redaction.maxStateTokens", 1);
   const patterns = config.redaction.patterns;
   const custom = isPlainObject(patterns) ? (patterns as { custom?: unknown }).custom : undefined;
   const validCustom = Array.isArray(custom) && custom.every((entry) => typeof entry === "string");

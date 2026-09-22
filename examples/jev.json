@@ -7,7 +7,7 @@
     "maxRequestsPerSession": 200,
     "maxTokensPerSession": 400000,
     "onBreach": "disable",
-    "inputPricePerMTok": 0,
+    "inputPricePerMTok": 0.042,
     "outputPricePerMTok": 0
   },
 
@@ -19,7 +19,8 @@
 
   "redaction": {
     "patterns": "default",
-    "maxStateChars": 120000
+    "maxStateChars": 120000,
+    "maxStateTokens": 32000
   },
 
   "modules": {
@@ -35,6 +36,8 @@
       "reasoningDropScore": 0,
       "reasoningConfidenceFloor": 0,
       "skillRouting": false,
+      "skillSuggestion": false,
+      "skillsDirs": [],
       "thinkingBands": [
         { "max": 0.75, "level": "off" },
         { "max": 1.5, "level": "low" },
@@ -54,6 +57,15 @@
       "allowBlock": false,
       "onFailure": "allow",
       "withoutUi": "deny",
+      "confirmMode": "ask",
+      "fastPath": { "enabled": true, "block": false },
+      "rules": {
+        "enabled": false,
+        "files": ["AGENTS.md", "CLAUDE.md", ".pi/rules.md", "pi-jev.md"],
+        "maxRules": 10,
+        "violationThreshold": 0.6,
+        "onViolation": "steer"
+      },
       "thresholds": {
         "blockBlastRadius": 3.0,
         "blockReversible": 0.3,
@@ -81,7 +93,8 @@
       "timeoutMs": 3000,
       "injectionThreshold": 0.7,
       "secretThreshold": 0.6,
-      "personalDataThreshold": 0.6
+      "personalDataThreshold": 0.6,
+      "deterministicInjection": true
     },
 
     "prune": {
@@ -99,7 +112,8 @@
       "everyNTurns": 3,
       "minTurns": 6,
       "loopThreshold": 0.75,
-      "falseDoneThreshold": 0.7
+      "falseDoneThreshold": 0.7,
+      "requireEvidence": true
     }
   },
 

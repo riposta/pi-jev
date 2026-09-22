@@ -246,6 +246,41 @@ export default function piJev(pi: ExtensionAPI): void {
         ctx.ui.notify(`pi-jev: ${module} shadow ${value} (this session only).`, "info");
         return;
       }
+      if (sub === "trace") {
+        const count = Number(rest[0] ?? "5");
+        const recent = telemetry?.recent() ?? [];
+        const lines = recent.slice(-(Number.isFinite(count) && count > 0 ? count : 5)).map((record) =>
+          `${record.hook}${record.tool ? ` (${record.tool})` : ""}: ${record.decision}${
+            record.shadow ? " [shadow]" : ""
+          }${
+            record.wouldHaveBeen && record.wouldHaveBeen !== record.decision
+              ? ` → ${record.wouldHaveBeen}`
+              : ""
+          }${record.reason ? ` — ${record.reason}` : ""}`,
+        );
+        ctx.ui.notify(lines.length > 0 ? lines.join("\n") : "jev: no decisions yet.", "info");
+        return;
+      }
+      if (sub === "recommend") {
+        const dir = telemetry?.dir() ?? "";
+        const records = readLog({ dir });
+        const labels = records.filter(
+          (record) => record.hook === "gate" && (record.userChoice === "allow" || record.userChoice === "deny"),
+        );
+        const denied = labels.filter((record) => record.userChoice === "deny").length;
+        const rate = labels.length > 0 ? denied / labels.length : Number.NaN;
+        const advice = !Number.isFinite(rate)
+          ? "no gate labels yet — promote confirm and work normally to collect them"
+          : rate > 0.3
+            ? "deny rate is high: relax confirm thresholds with tools/calibrate.ts"
+            : "deny rate looks acceptable: keep the current thresholds";
+        ctx.ui.notify(
+          `pi-jev recommend (${records.length} records, ${labels.length} gate labels)\n` +
+            `confirm deny rate: ${Number.isFinite(rate) ? `${(rate * 100).toFixed(1)}%` : "n/a"}\n→ ${advice}`,
+          "info",
+        );
+        return;
+      }
       if (sub === "stats") {
         const days = Number(rest[0] ?? "1");
         const since = Number.isFinite(days)
@@ -300,20 +335,35 @@ function registerToolResultPipeline(pi: ExtensionAPI, deps: Deps): void {
     const result = await deps.ask("shield_prune", toolState, SHIELD_PRUNE_QUESTIONS, {
       signal: ctx.signal,
     });
+    const injectionFloor = config.modules.shield.deterministicInjection ? shield.deterministicInjection(raw) : 0;
     if (!result) {
+      // Offline floor: classic injections are withheld even when Jev is
+      // unavailable, so the shield is not a no-op without a key.
+      const caughtOffline = !state.shadow.shield && shieldEnabled && injectionFloor > config.modules.shield.injectionThreshold;
       deps.log({
         hook: "shield",
         questionsVersion: "",
         stateHash: "",
         tool: event.toolName,
-        decision: "fail_open",
+        decision: caughtOffline ? "replace" : "fail_open",
         shadow: state.shadow.shield,
-        reason: "classification unavailable",
+        wouldHaveBeen: caughtOffline ? "replace" : "fail_open",
+        reason: caughtOffline ? `prompt injection (deterministic ${injectionFloor.toFixed(2)})` : "classification unavailable",
+        detail: { deterministicInjection: injectionFloor },
       });
+      if (caughtOffline) {
+        return { content: [{ type: "text" as const, text: shield.withheldNotice(event.toolName, {
+          replace: true,
+          reasons: [`prompt injection (deterministic ${injectionFloor.toFixed(2)})`],
+          injection: injectionFloor,
+          secret: 0,
+          personalData: 0,
+        }) }] };
+      }
       return;
     }
 
-    const shieldDecision = shield.evaluateShield(result.answers, config);
+    const shieldDecision = shield.evaluateShield(result.answers, config, injectionFloor);
     const pruneDecision = prune.evaluatePrune(result.answers, config, sampled.totalLines);
     const shadow = state.shadow.shield;
 
@@ -330,11 +380,13 @@ function registerToolResultPipeline(pi: ExtensionAPI, deps: Deps): void {
       latencyMs: result.meta.latencyMs,
       cached: result.meta.cached,
       usage: result.meta.usage,
+      answeredModel: result.meta.answeredModel,
       reason: shieldDecision.reasons.join(", ") || undefined,
       detail: {
         injection: shieldDecision.injection,
         secret: shieldDecision.secret,
         personalData: shieldDecision.personalData,
+        deterministicInjection: injectionFloor,
         droppedLines: sampled.droppedLines,
       },
     };
@@ -355,6 +407,7 @@ function registerToolResultPipeline(pi: ExtensionAPI, deps: Deps): void {
       latencyMs: result.meta.latencyMs,
       cached: result.meta.cached,
       usage: result.meta.usage,
+      answeredModel: result.meta.answeredModel,
       detail: { relevance: pruneDecision.relevance, totalLines: sampled.totalLines },
     };
     deps.log(pruneRecord);

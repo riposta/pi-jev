@@ -9,9 +9,12 @@
  * never downgrades. P5: any failure means Pi behaves as if we were not here.
  */
 
+import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { homedir } from "node:os";
+import { isAbsolute, join } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { isToolCallEventType } from "@earendil-works/pi-coding-agent";
-import { ROUTER_QUESTIONS, ROUTER_QUESTIONS_CORE, withModelChoice } from "../questions.ts";
+import { ROUTER_QUESTIONS, ROUTER_QUESTIONS_CORE, withModelChoice, withSkillChoice } from "../questions.ts";
 import type {
   Answers,
   ChoiceAnswer,
@@ -272,6 +275,72 @@ export function modelForTier(config: Config, tier: TierName): { provider: string
   return { provider: entry.provider, model: entry.model };
 }
 
+/* -------------------------------------------------------------------------- */
+/* Local skill catalog (optional)                                             */
+/* -------------------------------------------------------------------------- */
+
+export interface SkillInfo {
+  name: string;
+  description: string;
+  path: string;
+}
+
+function parseFrontmatter(text: string): { name?: string; description?: string } {
+  const match = /^---\n([\s\S]*?)\n---/.exec(text);
+  if (!match) return {};
+  const out: Record<string, string> = {};
+  for (const line of (match[1] ?? "").split("\n")) {
+    const entry = /^(name|description):\s*(.*)$/.exec(line.trim());
+    if (entry) out[entry[1] as string] = (entry[2] ?? "").replace(/^["']|["']$/g, "");
+  }
+  return out;
+}
+
+/**
+ * Scans the configured skill directories for `SKILL.md` files. Defaults to Pi's
+ * user skills and the project skills directory when none are configured.
+ */
+export function loadSkills(cwd: string, dirs: readonly string[], limit = 60): SkillInfo[] {
+  const roots =
+    dirs.length > 0 ? dirs : [join(homedir(), ".pi", "agent", "skills"), join(cwd, ".pi", "skills")];
+  const skills: SkillInfo[] = [];
+  for (const dir of roots) {
+    const root = isAbsolute(dir) ? dir : join(cwd, dir);
+    if (!existsSync(root)) continue;
+    let entries: string[];
+    try {
+      entries = readdirSync(root);
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      if (skills.length >= limit) return skills;
+      for (const file of [join(root, entry, "SKILL.md"), join(root, `${entry}.md`)]) {
+        if (!existsSync(file)) continue;
+        try {
+          const fm = parseFrontmatter(readFileSync(file, "utf8").slice(0, 4_000));
+          const description = (fm.description ?? "").replace(/\s+/g, " ").trim();
+          if (description) skills.push({ name: fm.name ?? entry, description, path: file });
+        } catch {
+          // Unreadable skill file: skip.
+        }
+        break;
+      }
+    }
+  }
+  return skills;
+}
+
+export function resolveChosenSkill(
+  answer: ChoiceAnswer | undefined,
+  skills: readonly SkillInfo[],
+): SkillInfo | undefined {
+  if (!answer) return undefined;
+  const match = /^s(\d+)$/.exec(answer.choice);
+  if (!match) return undefined;
+  return skills[Number(match[1])];
+}
+
 export function register(pi: ExtensionAPI, deps: Deps): void {
   const recentFiles: string[] = [];
   let previousTurn = "";
@@ -318,8 +387,15 @@ export function register(pi: ExtensionAPI, deps: Deps): void {
       key: `m${index}`,
       description: describeModel(model),
     }));
+    const skills = deps.config.modules.router.skillSuggestion
+      ? loadSkills(ctx.cwd, deps.config.modules.router.skillsDirs)
+      : [];
+    const skillOptions = skills.map((skill, index) => ({
+      key: `s${index}`,
+      description: `${skill.name}: ${skill.description}`.slice(0, 240),
+    }));
     const base = deps.config.modules.router.skillRouting ? ROUTER_QUESTIONS : ROUTER_QUESTIONS_CORE;
-    const questions = withModelChoice(base, options);
+    const questions = withSkillChoice(withModelChoice(base, options), skillOptions);
 
     const state = {
       prompt: event.prompt,
@@ -328,6 +404,7 @@ export function register(pi: ExtensionAPI, deps: Deps): void {
       previous_turn: previousTurn,
       available_tiers: ORDER.map((tier) => tierLabel(tier, deps.config)),
       available_models: models.map((model) => `${model.provider}/${model.id}`),
+      available_skills: skills.map((skill) => skill.name),
     };
 
     const result = await deps.ask("router", state, questions, { signal: ctx.signal });
@@ -344,7 +421,9 @@ export function register(pi: ExtensionAPI, deps: Deps): void {
       return;
     }
 
-    const targetModel = (result.answers as Record<string, ChoiceAnswer | undefined>).target_model;
+    const rawAnswers = result.answers as Record<string, ChoiceAnswer | undefined>;
+    const targetModel = rawAnswers.target_model;
+    const chosenSkill = resolveChosenSkill(rawAnswers.target_skill, skills);
     const decision = decideRouter(
       result.answers as unknown as RouterAnswers,
       deps.config,
@@ -364,6 +443,7 @@ export function register(pi: ExtensionAPI, deps: Deps): void {
       latencyMs: result.meta.latencyMs,
       cached: result.meta.cached,
       usage: result.meta.usage,
+      answeredModel: result.meta.answeredModel,
       detail: {
         thinking: decision.thinking,
         readOnly: decision.readOnly,
@@ -372,7 +452,9 @@ export function register(pi: ExtensionAPI, deps: Deps): void {
         chosenModel: decision.chosenModel
           ? `${decision.chosenModel.provider}/${decision.chosenModel.model}`
           : "tier",
+        chosenSkill: chosenSkill?.name ?? "none",
         availableModels: state.available_models,
+        availableSkills: state.available_skills,
         signals: decision.signals,
       },
     };
@@ -383,6 +465,17 @@ export function register(pi: ExtensionAPI, deps: Deps): void {
     deps.status(formatStatus(deps.state, deps.config));
 
     if (shadow) return;
+
+    if (chosenSkill) {
+      pi.sendMessage(
+        {
+          customType: "jev-skill",
+          content: `Jev: consider the "${chosenSkill.name}" skill for this task — ${chosenSkill.description}`,
+          display: true,
+        },
+        { deliverAs: "steer" },
+      );
+    }
 
     const missing = await applyDecision(pi, ctx, decision, deps.config, allTools);
     if (missing && !warnedMissingModel) {

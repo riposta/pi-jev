@@ -252,6 +252,7 @@ export function formatExplain(record: TelemetryRecord | undefined): string {
       else lines.push(`  ${id}: ${answer.score.toFixed(2)} (confidence ${answer.confidence.toFixed(2)})`);
     }
   }
+  if (record.answeredModel) lines.push(`answered by: ${record.answeredModel}`);
   if (record.latencyMs !== undefined) lines.push(`latency: ${record.latencyMs} ms${record.cached ? " (cached)" : ""}`);
   if (record.usage) lines.push(`tokens: ${record.usage.input_tokens} in / ${record.usage.output_tokens} out`);
   return lines.join("\n");

@@ -89,6 +89,8 @@ export interface TokenUsage {
 export interface AskMeta {
   hook: HookName;
   model: string;
+  /** The versioned model the API reported answering (e.g. `jev-1.13.0`). */
+  answeredModel?: string;
   latencyMs: number;
   cached: boolean;
   /** sha256 of the redacted state that was sent. */
@@ -173,6 +175,8 @@ export interface GateDecision {
    * case; labelling them apart keeps the per-rule calibration honest.
    */
   branch?: string;
+  /** Deliver the concern to the agent instead of prompting the user. */
+  steer?: boolean;
   reason: string;
   numbers: Record<string, number>;
 }
@@ -235,6 +239,13 @@ export interface RouterConfig {
   reasoningConfidenceFloor: number;
   /** When true, `domain` is read for skill routing. Off by default (speculative). */
   skillRouting: boolean;
+  /**
+   * When true, the router suggests at most one skill from the local skill
+   * catalog (`skillsDirs`) instead of only choosing a model.
+   */
+  skillSuggestion: boolean;
+  /** Directories scanned for `SKILL.md` files. Empty means no skill catalog. */
+  skillsDirs: string[];
   /** Reasoning score -> thinking level. Ordered, first band whose `max` is not exceeded wins. */
   thinkingBands: ThinkingBand[];
   tiers: Record<TierName, TierConfig>;
@@ -264,6 +275,30 @@ export interface GateThresholds {
 
 export type GateFailurePolicy = "allow" | "deny";
 export type ConfirmPolicy = "deny" | "allow-with-log";
+/** `ask` prompts the user; `steer` sends the concern back to the agent instead. */
+export type GateConfirmMode = "ask" | "steer";
+/** What to do when a project rule is judged violated on a write/edit. */
+export type RuleViolationAction = "steer" | "confirm" | "block";
+
+export interface GateRulesConfig {
+  /** Judge `write`/`edit` against project Markdown rules. Off by default. */
+  enabled: boolean;
+  /** Files scanned for rules, relative to cwd. */
+  files: string[];
+  /** Cap on rules sent per request (one Noul each). */
+  maxRules: number;
+  /** Noul probability above which a rule counts as violated. */
+  violationThreshold: number;
+  /** What a live gate does about a violation. */
+  onViolation: RuleViolationAction;
+}
+
+export interface GateFastPathConfig {
+  /** Known-dangerous command patterns are decided locally, without Jev. */
+  enabled: boolean;
+  /** `false` degrades a fast-path hit to confirm instead of block. */
+  block: boolean;
+}
 
 export interface GateConfig {
   enabled: boolean;
@@ -275,6 +310,12 @@ export interface GateConfig {
   onFailure: GateFailurePolicy;
   /** What a live gate does when it wants to confirm but `ctx.hasUI` is false. */
   withoutUi: ConfirmPolicy;
+  /** How a live `confirm` outcome is delivered. */
+  confirmMode: GateConfirmMode;
+  /** Deterministic pre-filter for obvious commands, independent of Jev. */
+  fastPath: GateFastPathConfig;
+  /** Semantic lint of writes/edits against project rules. */
+  rules: GateRulesConfig;
   thresholds: GateThresholds;
   skipTools: string[];
   /** "default" or a list of read-only command prefixes. */
@@ -289,6 +330,8 @@ export interface ShieldConfig {
   injectionThreshold: number;
   secretThreshold: number;
   personalDataThreshold: number;
+  /** Pattern-match obvious injection phrasing without a Jev call. */
+  deterministicInjection: boolean;
 }
 
 export interface PruneConfig {
@@ -307,6 +350,8 @@ export interface WatchdogConfig {
   minTurns: number;
   loopThreshold: number;
   falseDoneThreshold: number;
+  /** Treat a completion claim with no test/build/lint/read-back as false-done. */
+  requireEvidence: boolean;
 }
 
 export interface ModulesConfig {
@@ -337,6 +382,12 @@ export type RedactionPatterns = "default" | "strict" | { custom: string[] } | st
 export interface RedactionConfig {
   patterns: RedactionPatterns;
   maxStateChars: number;
+  /**
+   * Token ceiling for the redacted state. Jev allows 64k for state+questions
+   * and 32k for state+the longest question; 32k is the safe default. The
+   * effective cap is the tighter of this and `maxStateChars`.
+   */
+  maxStateTokens: number;
 }
 
 export interface TelemetryConfig {
@@ -405,6 +456,8 @@ export interface TelemetryRecord {
   latencyMs?: number;
   cached?: boolean;
   usage?: TokenUsage;
+  /** Versioned model the API reported answering, when available. */
+  answeredModel?: string;
   error?: string;
   reason?: string;
   /** Redacted state, only when `telemetry.logStateContent` is set. */

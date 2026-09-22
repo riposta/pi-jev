@@ -1,11 +1,16 @@
 import { describe, expect, it } from "vitest";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   availableModels,
   decideRouter,
   describeModel,
   isAllowedModel,
+  loadSkills,
   modelForTier,
   resolveChosenModel,
+  resolveChosenSkill,
   restrictToAllowed,
   thinkingFor,
   type ModelInfo,
@@ -224,5 +229,25 @@ describe("classifier model choice", () => {
 
   it("resolves the configured tier model", () => {
     expect(modelForTier(makeConfig(), "cheap")).toEqual({ provider: "anthropic", model: "claude-haiku-4-5" });
+  });
+});
+
+describe("skill catalog", () => {
+  it("loads skills from SKILL.md frontmatter and maps the choice back", () => {
+    const dir = mkdtempSync(join(tmpdir(), "jev-skills-"));
+    mkdirSync(join(dir, "deploy"), { recursive: true });
+    writeFileSync(
+      join(dir, "deploy", "SKILL.md"),
+      "---\nname: deploy\ndescription: Deploy the service safely.\n---\n\nbody",
+    );
+    const skills = loadSkills(dir, [dir]);
+    expect(skills[0]).toMatchObject({ name: "deploy", description: "Deploy the service safely." });
+    expect(resolveChosenSkill(choice("s0"), skills)?.name).toBe("deploy");
+    expect(resolveChosenSkill(choice("none"), skills)).toBeUndefined();
+    expect(resolveChosenSkill(undefined, skills)).toBeUndefined();
+  });
+
+  it("returns no skills for a missing directory", () => {
+    expect(loadSkills("/nonexistent", ["/definitely/not/here"])).toEqual([]);
   });
 });

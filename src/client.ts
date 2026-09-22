@@ -308,7 +308,7 @@ export function createClient(deps: ClientDeps): Client {
     stateForRequest: unknown,
     questions: QuestionSet,
     signal: AbortSignal | undefined,
-  ): Promise<{ answers: Record<string, Answer>; usage: TokenUsage; latencyMs: number }> {
+  ): Promise<{ answers: Record<string, Answer>; usage: TokenUsage; latencyMs: number; answeredModel?: string }> {
     const started = now();
     const controller = new AbortController();
     let timedOut = false;
@@ -384,9 +384,11 @@ export function createClient(deps: ClientDeps): Client {
         const parsed = (await response.json()) as {
           answers?: Record<string, WireAnswer>;
           usage?: TokenUsage;
+          model?: string;
         };
         const answers = parseAnswers(questions, parsed);
-        return { answers, usage: extractUsage(parsed), latencyMs: now() - started };
+        const answeredModel = typeof parsed.model === "string" ? parsed.model : undefined;
+        return { answers, usage: extractUsage(parsed), latencyMs: now() - started, answeredModel };
       }
       throw new Error("unreachable");
     } finally {
@@ -437,9 +439,8 @@ export function createClient(deps: ClientDeps): Client {
     if (disabledReason) return null;
 
     const redactedRaw = deps.redact.deep(rawState);
-    const redacted = deps.config.redaction.maxStateChars
-      ? truncateState(redactedRaw, deps.config.redaction.maxStateChars)
-      : redactedRaw;
+    const budget = stateCharBudget(deps.config);
+    const redacted = budget > 0 ? truncateState(redactedRaw, budget) : redactedRaw;
 
     const stateHash = hashState(redacted);
     const memKey = `${hook}:${QUESTIONS_VERSION}:${sha256Hex(
@@ -505,6 +506,7 @@ export function createClient(deps: ClientDeps): Client {
             latencyMs: result.latencyMs,
             stateHash,
             usage: result.usage,
+            answeredModel: result.answeredModel,
             redactedState: redacted,
           }),
         };
@@ -547,11 +549,13 @@ export function createClient(deps: ClientDeps): Client {
     latencyMs: number;
     stateHash: string;
     usage?: TokenUsage;
+    answeredModel?: string;
     redactedState: unknown;
   }) {
     return {
       hook: input.hook,
       model: config.model,
+      answeredModel: input.answeredModel,
       latencyMs: input.latencyMs,
       cached: input.cached,
       stateHash: input.stateHash,
@@ -587,6 +591,20 @@ export function cost(usage: TokenUsage, config: Config): number {
       usage.output_tokens * config.budget.outputPricePerMTok) /
     1_000_000
   );
+}
+
+/**
+ * The tightest of the character cap and the token cap. Tokens are estimated at
+ * ~4 characters, which is close enough for an English/mixed state and keeps the
+ * request under Jev's `state + longest question` ceiling. Returns 0 when no
+ * budget is configured.
+ */
+export function stateCharBudget(config: Config): number {
+  const byChars = config.redaction.maxStateChars > 0 ? config.redaction.maxStateChars : Number.POSITIVE_INFINITY;
+  const byTokens =
+    config.redaction.maxStateTokens > 0 ? config.redaction.maxStateTokens * 4 : Number.POSITIVE_INFINITY;
+  const budget = Math.min(byChars, byTokens);
+  return Number.isFinite(budget) ? budget : 0;
 }
 
 function truncateStrings(value: unknown, limit: number): unknown {

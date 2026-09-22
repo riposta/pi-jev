@@ -197,7 +197,8 @@ Frequently changed values:
 Environment overrides: `PI_JEV_MODEL`, `PI_JEV_BASE_URL`, `PI_JEV_API_KEY_ENV`,
 `PI_JEV_LOG_DIR`, `PI_JEV_LOG_STATE_CONTENT`, `PI_JEV_OFF`,
 `PI_JEV_<MODULE>_ENABLED`, `PI_JEV_<MODULE>_SHADOW`, `PI_JEV_<MODULE>_TIMEOUT_MS`,
-`PI_JEV_MAX_REQUESTS`, `PI_JEV_MAX_TOKENS`.
+`PI_JEV_GATE_FASTPATH_ENABLED`, `PI_JEV_GATE_RULES_ENABLED`,
+`PI_JEV_WATCHDOG_REQUIRE_EVIDENCE`, `PI_JEV_MAX_REQUESTS`, `PI_JEV_MAX_TOKENS`.
 
 ### Timeouts, budget and failure
 
@@ -223,10 +224,10 @@ When the gate is live and non-shadow, a classification failure falls back to
 | Module | Hook | Default | What it does |
 | --- | --- | --- | --- |
 | `router` | `before_agent_start` | enabled, shadow | picks a model from the models Pi reports available (configured tiers are the fallback), thinking level and tool loadout; nudges on underspecification |
-| `gate` | `tool_call` | enabled, shadow | allow / confirm / block based on blast radius, reversibility, regenerable artefacts, intent drift, secrets, exfiltration, unverified code, installs and privilege/remote execution |
+| `gate` | `tool_call` | enabled, shadow | deterministic fast path for obvious commands (works offline), then allow / confirm / block based on blast radius, reversibility, regenerable artefacts, intent drift, secrets, exfiltration, unverified code, installs and privilege/remote execution; optional semantic lint of writes/edits against project rules |
 | `shield` | `tool_result` | enabled, shadow | withholds prompt-injected output, masks secrets and personal data |
 | `prune` | `tool_result` | disabled | replaces low-relevance output with a summary and a temp-file pointer |
-| `watchdog` | `turn_end` | disabled | detects looping and unverified completion; injects advice, never aborts |
+| `watchdog` | `turn_end` | disabled | detects looping and unverified completion (a "done" claim with no test/build/lint and no read-back counts as false-done); injects advice, never aborts |
 
 `shield` and `prune` share **one** Jev request on `tool_result` and split the
 answers in code. That orchestration lives in `index.ts` so the two modules stay
@@ -244,6 +245,22 @@ work gets done (`printenv`, `git log`, a test run), and the gate still
 classifies every shell command. The full loadout is restored on the next
 write-capable prompt. Set `modules.router.readOnlyThreshold` to `0` to disable
 the narrowing entirely.
+
+Deterministic checks run before any network call. The gate decides obvious
+commands locally (force push, recursive delete of `/`, `DROP`, `curl | sh`), so
+it protects a session with no API key and does not spend tokens recognizing
+them. The shield pattern-matches classic injection phrasing for the same
+reason. Jev is asked only for the judgment code cannot express.
+
+`gate.rules` optionally sends each `write`/`edit` plus your project Markdown
+rules (`AGENTS.md`, `CLAUDE.md`, `.pi/rules.md`, `pi-jev.md`) in the gate's
+single request, one Noul per rule. A violated rule is fed back to the agent
+(`onViolation: "steer"`, the default) instead of interrupting you. Enable with
+`{"modules":{"gate":{"rules":{"enabled":true}}}}`.
+
+The gate's `confirmMode: "steer"` does the same for ordinary confirms: the
+concern goes back to the agent rather than to a prompt. Blocks and
+`withoutUi: "deny"` are unaffected.
 
 ### Promoting a module
 
@@ -314,7 +331,7 @@ organisational redaction.
 ## Testing
 
 ```bash
-npm test          # 142 unit + integration tests, no network
+npm test          # 175 unit + integration tests, no network
 npm run typecheck
 npm run test:coverage
 npm run test:pi   # end-to-end against the real `pi` CLI (needs pi >= 0.85 on PATH)

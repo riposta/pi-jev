@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { createClient, MalformedResponseError, parseAnswers, truncateState } from "../src/client.ts";
+import { createClient, MalformedResponseError, parseAnswers, stateCharBudget, truncateState } from "../src/client.ts";
 import { createRedactor } from "../src/redact.ts";
 import { choice, makeConfig, makeState, memoryFs, noul, score, startMockJev, type MockJev } from "./helpers.ts";
 import type { QuestionSet, SessionState, TelemetryRecord } from "../src/types.ts";
@@ -61,6 +61,13 @@ describe("client ask", () => {
     expect(state.tokens).toBe(420);
     expect(state.costUsd).toBeCloseTo(420, 5);
     expect(mock.requests[0]?.auth).toBe("Bearer test-key");
+  });
+
+  it("records the versioned model the API reported answering", async () => {
+    const mock = await server();
+    const { client } = await setup({}, mock);
+    const result = await client.ask("gate", { command: "x" }, QUESTIONS);
+    expect(result?.meta.answeredModel).toBe("jev-latest");
   });
 
   it("parses choice and score answers", async () => {
@@ -243,6 +250,11 @@ describe("state truncation", () => {
   it("returns small state untouched", () => {
     const state = { prompt: "hi" };
     expect(truncateState(state, 1_000)).toBe(state);
+  });
+
+  it("takes the tighter of the character and token budgets", () => {
+    expect(stateCharBudget(makeConfig({ redaction: { maxStateChars: 1_000, maxStateTokens: 100 } }))).toBe(400);
+    expect(stateCharBudget(makeConfig({ redaction: { maxStateChars: 1_000, maxStateTokens: 1_000 } }))).toBe(1_000);
   });
 });
 

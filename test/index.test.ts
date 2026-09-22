@@ -226,6 +226,49 @@ describe("index wiring", () => {
     );
   });
 
+  it("decides obvious commands locally without calling Jev", async () => {
+    vi.stubEnv("PI_JEV_GATE_SHADOW", "false");
+    const { harness, ctx } = await boot();
+    ctx.hasUI = false; // withoutUi defaults to deny
+    const before = mock.requests.length;
+    const results = await emit(
+      harness.handlers,
+      "tool_call",
+      { type: "tool_call", toolCallId: "1", toolName: "bash", input: { command: "git push --force origin main" } },
+      ctx,
+    );
+    expect(mock.requests.length).toBe(before);
+    expect(results.find((result) => result?.block)?.block).toBe(true);
+  });
+
+  it("steers the agent when a project rule is violated", async () => {
+    mkdirSync(join(cwd, ".pi"), { recursive: true });
+    writeFileSync(
+      join(cwd, ".pi", "jev.json"),
+      JSON.stringify({ modules: { gate: { enabled: true, shadow: false, rules: { enabled: true, maxRules: 3 } } } }),
+    );
+    writeFileSync(join(cwd, "AGENTS.md"), "# No console statements\nCode must not contain `console.log`.\n");
+    mock.setAnswers({ rule_0: noul(0.9) });
+    const { harness, ctx } = await boot();
+    await emit(
+      harness.handlers,
+      "tool_call",
+      { type: "tool_call", toolCallId: "1", toolName: "write", input: { path: "src/a.ts", content: "console.log('x')" } },
+      ctx,
+    );
+    const sent = harness.calls.sendMessage.at(-1);
+    expect(sent?.message?.customType).toBe("jev-gate");
+    expect(String(sent?.message?.content)).toContain("project rule");
+  });
+
+  it("serves /jev trace and /jev recommend", async () => {
+    const { harness, ctx } = await boot();
+    await harness.commands.get("jev")!("trace 3", ctx);
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("no decisions"), "info");
+    await harness.commands.get("jev")!("recommend", ctx);
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("recommend"), "info");
+  });
+
   it("appends the clarify directive when the request is underspecified", async () => {
     mock.setAnswers({ ...ROUTER_ANSWERS, is_underspecified: noul(0.95) });
     const { harness, ctx } = await boot();

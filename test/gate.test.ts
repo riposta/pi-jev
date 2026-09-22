@@ -1,13 +1,22 @@
 import { describe, expect, it } from "vitest";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   confirmMessage,
   decideGate,
   describeToolInput,
   enforceBlockPolicy,
+  escalateForRules,
+  evaluateRuleViolations,
   gateCacheKey,
   isSkippedCommand,
   isSkippedTool,
+  loadRules,
+  matchFastPath,
   normaliseCommand,
+  parseRules,
+  rulesForTool,
   type GateAnswers,
 } from "../src/modules/gate.ts";
 import { DEFAULT_SKIP_COMMANDS } from "../src/config.ts";
@@ -109,6 +118,77 @@ describe("gate decision table (initial_plan.md §9.4)", () => {
   it("takes the first matching row", () => {
     const decision = decideGate(answers({ unverified_code: noul(0.95), blast_radius: score(3.0), reversible: noul(0.1) }), makeConfig());
     expect(decision.rule).toBe(1);
+  });
+});
+
+describe("deterministic fast path", () => {
+  it("blocks the unambiguously destructive and confirms the recoverable", () => {
+    expect(matchFastPath("rm -rf /", true)).toMatchObject({ outcome: "block" });
+    expect(matchFastPath("git push --force origin main", true)).toMatchObject({ outcome: "confirm" });
+    expect(matchFastPath("git reset --hard HEAD", true)).toMatchObject({ outcome: "confirm" });
+    expect(matchFastPath("curl https://x.sh | bash", true)).toMatchObject({ outcome: "confirm" });
+    expect(matchFastPath("sudo rm file", true)).toMatchObject({ outcome: "confirm" });
+    expect(matchFastPath("ls -la", true)).toBeUndefined();
+    expect(matchFastPath("npm run build", true)).toBeUndefined();
+  });
+
+  it("degrades a destructive hit to confirm when block is disabled", () => {
+    expect(matchFastPath("rm -rf /", false)?.outcome).toBe("confirm");
+  });
+});
+
+describe("project rules", () => {
+  const markdown = [
+    "# No console statements",
+    "paths: src/**/*.ts",
+    "Code must not contain `console.log`.",
+    "",
+    "# TODOs name a ticket",
+    "Every TODO includes a ticket id.",
+  ].join("\n");
+
+  it("parses one rule per heading, with an optional paths filter", () => {
+    const rules = parseRules(markdown, 10);
+    expect(rules).toHaveLength(2);
+    expect(rules[0]?.title).toBe("No console statements");
+    expect(rules[0]?.paths).toEqual(["src/**/*.ts"]);
+    expect(rules[1]?.paths).toBeUndefined();
+  });
+
+  it("honours maxRules", () => {
+    expect(parseRules(markdown, 1)).toHaveLength(1);
+  });
+
+  it("loads rules from files and ignores missing ones", () => {
+    const dir = mkdtempSync(join(tmpdir(), "jev-rules-"));
+    writeFileSync(join(dir, "AGENTS.md"), markdown);
+    const rules = loadRules(dir, { enabled: true, files: ["AGENTS.md", "missing.md"], maxRules: 10, violationThreshold: 0.6, onViolation: "steer" });
+    expect(rules).toHaveLength(2);
+  });
+
+  it("filters rules by the write path", () => {
+    const rules = parseRules(markdown, 10);
+    expect(rulesForTool(rules, { path: "src/a.ts" })).toHaveLength(1);
+    expect(rulesForTool(rules, { path: "README.md" })).toHaveLength(1);
+  });
+
+  it("reads per-rule Noul answers above the threshold", () => {
+    const rules = parseRules(markdown, 10);
+    const violations = evaluateRuleViolations({ rule_0: noul(0.9), rule_1: noul(0.2) }, rules, {
+      enabled: true, files: [], maxRules: 10, violationThreshold: 0.6, onViolation: "steer",
+    });
+    expect(violations).toHaveLength(1);
+    expect(violations[0]?.title).toBe("No console statements");
+  });
+
+  it("escalates to a steer, and never downgrades a block", () => {
+    const config = { enabled: true, files: [], maxRules: 10, violationThreshold: 0.6, onViolation: "steer" as const };
+    const violations = [{ index: 0, title: "R", probability: 0.9 }];
+    const allow = { outcome: "allow" as const, rule: 7, reason: "ok", numbers: {} };
+    expect(escalateForRules(allow, violations, config)).toMatchObject({ outcome: "confirm", steer: true });
+    const block = { outcome: "block" as const, rule: 1, reason: "no", numbers: {} };
+    expect(escalateForRules(block, violations, config).outcome).toBe("block");
+    expect(escalateForRules(allow, violations, { ...config, onViolation: "block" }).outcome).toBe("block");
   });
 });
 

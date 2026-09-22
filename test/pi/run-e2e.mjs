@@ -309,7 +309,10 @@ try {
   check("gate saw the original command", String(gate?.detail?.command ?? "").includes("git push --force"));
   const shield = byHook("shield");
   check("shield replaced injected content", shield?.decision === "replace", JSON.stringify(shield?.decision));
-  check("pi output shows the blocked tool", combined.includes("Jev:") && combined.includes("blast radius"));
+  check(
+    "pi output shows the blocked tool",
+    combined.includes("Jev:") && (combined.includes("blast radius") || combined.includes("pattern:")),
+  );
   check("pi output shows the withheld notice", combined.includes("withheld"));
   check("model reached the final turn", combined.includes("Finished the requested work."));
 

@@ -15,9 +15,30 @@ import { FAILURE_TYPE_QUESTION, SHIELD_QUESTIONS } from "../questions.ts";
 
 export type ShieldAnswers = Answers<typeof SHIELD_QUESTIONS & typeof FAILURE_TYPE_QUESTION>;
 
-export function evaluateShield(answers: ShieldAnswers, config: Config): ShieldDecision {
+/**
+ * Obvious injection phrasing, matched in code. This is the shield's offline
+ * floor: it fires with no API key, and it is combined with (never replaced by)
+ * the classifier's `has_injection`.
+ */
+const INJECTION_MARKERS: readonly RegExp[] = [
+  /\bignore\s+(?:all\s+|any\s+)?(?:previous|prior|above|earlier)\s+instructions?\b/i,
+  /\bdisregard\s+(?:all\s+|any\s+)?(?:previous|prior|above|earlier)\b/i,
+  /\byou\s+are\s+now\b/i,
+  /\bsystem\s*prompt\b/i,
+  /\b(?:reveal|print|show|repeat)\s+(?:your|the)\s+(?:system\s+)?(?:prompt|instructions)\b/i,
+  /\bdo\s+not\s+tell\s+the\s+user\b/i,
+  /<\|(?:im_start|im_end|system|assistant)\|>/i,
+  /\bBEGIN\s+(?:SYSTEM\s+)?INSTRUCTIONS?\b/i,
+];
+
+/** 0.99 when the text carries a classic injection marker, otherwise 0. */
+export function deterministicInjection(text: string): number {
+  return INJECTION_MARKERS.some((pattern) => pattern.test(text)) ? 0.99 : 0;
+}
+
+export function evaluateShield(answers: ShieldAnswers, config: Config, injectionFloor = 0): ShieldDecision {
   const cfg = config.modules.shield;
-  const injection = answers.has_injection.noul;
+  const injection = Math.max(answers.has_injection.noul, injectionFloor);
   const secret = answers.has_secret.noul;
   const personalData = answers.has_personal_data.noul;
   const reasons: string[] = [];
