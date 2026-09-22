@@ -219,7 +219,11 @@ export default function piJev(pi: ExtensionAPI): void {
         return;
       }
       if (sub === "explain") {
-        const record = telemetry?.recent().at(-1);
+        const hookName = rest[0];
+        const record =
+          hookName && MODULES.includes(hookName as ModuleName)
+            ? telemetry?.lastFor(hookName as TelemetryRecord["hook"])
+            : telemetry?.recent().at(-1);
         ctx.ui.notify(formatExplain(record), "info");
         return;
       }

@@ -261,8 +261,10 @@ describe("index wiring", () => {
     expect(String(sent?.message?.content)).toContain("project rule");
   });
 
-  it("serves /jev trace and /jev recommend", async () => {
+  it("serves /jev explain, trace and recommend", async () => {
     const { harness, ctx } = await boot();
+    await harness.commands.get("jev")!("explain gate", ctx);
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("no decisions recorded"), "info");
     await harness.commands.get("jev")!("trace 3", ctx);
     expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("no decisions"), "info");
     await harness.commands.get("jev")!("recommend", ctx);

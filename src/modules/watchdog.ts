@@ -10,6 +10,8 @@
  * any routing saving.
  */
 
+import { existsSync } from "node:fs";
+import { isAbsolute, join } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { WATCHDOG_QUESTIONS } from "../questions.ts";
 import type { Answers, Config, Deps, WatchdogDecision } from "../types.ts";
@@ -33,6 +35,36 @@ export function claimsCompletion(text: string): boolean {
 
 export function commandIsEvidence(command: string): boolean {
   return EVIDENCE_COMMAND.test(command);
+}
+
+const PATH_RE = /(?:^|[\s`'"'(])((?:\.{0,2}\/)?[\w@./-]+\.[A-Za-z0-9]{1,8})(?=[\s`'"').,:;]|$)/g;
+
+/** Candidate file paths referenced in an assistant message. */
+export function referencedPaths(text: string): string[] {
+  const out: string[] = [];
+  for (const match of text.matchAll(PATH_RE)) {
+    const path = match[1] as string;
+    if (/\.(ts|tsx|js|jsx|py|go|rs|java|json|md|yml|yaml|toml|sh|c|h|cpp|rb)$/.test(path)) out.push(path);
+  }
+  return [...new Set(out)];
+}
+
+/** Paths a message references that do not exist under `cwd`. */
+export function missingPaths(text: string, cwd: string): string[] {
+  return referencedPaths(text).filter((path) => !existsSync(isAbsolute(path) ? path : join(cwd, path)));
+}
+
+function normalizeForRunaway(text: string): string {
+  return text.replace(/\s+/g, " ").toLowerCase().trim().slice(0, 2_000);
+}
+
+/** True when two consecutive assistant replies are near-identical (runaway). */
+export function runawayDetected(previous: string, current: string): boolean {
+  if (!previous || !current) return false;
+  const a = normalizeForRunaway(previous);
+  const b = normalizeForRunaway(current);
+  if (!a || !b) return false;
+  return a === b || a.includes(b) || b.includes(a);
 }
 
 export interface WatchdogState {
@@ -62,10 +94,11 @@ export function loopMessage(): string {
   );
 }
 
-export function verifyMessage(): string {
-  return (
-    "Jev: completion was claimed without verification. Before stopping, run the tests, read the changed file back, or check the build."
-  );
+export function verifyMessage(missing: readonly string[] = []): string {
+  const base =
+    "Jev: completion was claimed without verification. Before stopping, run the tests, read the changed file back, or check the build.";
+  if (missing.length === 0) return base;
+  return `${base} These referenced files do not exist: ${missing.join(", ")}.`;
 }
 
 export function register(pi: ExtensionAPI, deps: Deps): void {
@@ -73,11 +106,13 @@ export function register(pi: ExtensionAPI, deps: Deps): void {
   let turnIndex = 0;
   const recentTurns: SummarisedTurn[] = [];
   let commandEvidence = false;
+  let lastAssistantText = "";
   const writtenFiles = new Set<string>();
   const readFiles = new Set<string>();
 
   pi.on("session_start", () => {
     commandEvidence = false;
+    lastAssistantText = "";
     writtenFiles.clear();
     readFiles.clear();
   });
@@ -105,6 +140,10 @@ export function register(pi: ExtensionAPI, deps: Deps): void {
     recentTurns.push(summary);
     while (recentTurns.length > MAX_TURNS_IN_STATE) recentTurns.shift();
 
+    const text = messageText(event.message);
+    const runaway = runawayDetected(lastAssistantText, text);
+    lastAssistantText = text;
+
     if (!deps.config.modules.watchdog.enabled || !deps.state.layerEnabled) return;
     const cfg = deps.config.modules.watchdog;
     if (turnIndex < cfg.minTurns) return;
@@ -131,13 +170,15 @@ export function register(pi: ExtensionAPI, deps: Deps): void {
       return;
     }
 
+    const missing = missingPaths(text, ctx.cwd);
     const decision = evaluateWatchdog(result.answers, deps.config);
-    // A completion claim with no test/build/lint and no read-back is a
-    // false-done regardless of what the classifier said (TypeSafe: keep
-    // judgments code can make exactly out of the model).
-    if (cfg.requireEvidence && !evidence && claimsCompletion(messageText(event.message))) {
+    // A completion claim with no test/build/lint, no read-back, or references
+    // to files that do not exist is a false-done regardless of the classifier
+    // (TypeSafe: keep judgments code can make exactly out of the model).
+    if (cfg.requireEvidence && claimsCompletion(text) && (!evidence || missing.length > 0)) {
       decision.falseDone = true;
     }
+    if (runaway) decision.looping = true;
     const shadow = deps.state.shadow.watchdog;
     const record = {
       hook: "watchdog" as const,
@@ -152,7 +193,7 @@ export function register(pi: ExtensionAPI, deps: Deps): void {
       cached: result.meta.cached,
       usage: result.meta.usage,
       answeredModel: result.meta.answeredModel,
-      detail: { progress: decision.progress, turn: turnIndex, evidence },
+      detail: { progress: decision.progress, turn: turnIndex, evidence, runaway, missingPaths: missing.slice(0, 5) },
     };
     deps.log(record);
     deps.appendEntry(record);
@@ -167,7 +208,7 @@ export function register(pi: ExtensionAPI, deps: Deps): void {
       );
     } else if (decision.falseDone) {
       pi.sendMessage(
-        { customType: "jev-watchdog", content: verifyMessage(), display: true },
+        { customType: "jev-watchdog", content: verifyMessage(missing), display: true },
         { deliverAs: "followUp" },
       );
     }

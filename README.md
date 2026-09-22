@@ -127,11 +127,13 @@ Everything lives under `/jev`. Run it with no arguments for the status summary.
 | Command | Scope | Does |
 | --- | --- | --- |
 | `/jev` | — | Status: the status line, active model and `QUESTIONS_VERSION`, each module's `off` / `shadow` / `live` state, and request/token/cost usage. An unknown subcommand prints the same summary. |
-| `/jev explain` | — | The most recent classification (any hook): every answer with its probability or score, the decision, the threshold/reason that fired, latency and token usage. |
+| `/jev explain [hook]` | — | The most recent classification — overall, or for a specific `router`/`gate`/`shield`/`prune`/`watchdog`: every answer with its probability or score, the decision, the threshold/reason that fired, latency and token usage. |
 | `/jev shadow <module> on\|off` | session | Toggles shadow for one module: `router`, `gate`, `shield`, `prune` or `watchdog`. In shadow, the module classifies and logs but changes nothing (`[shadow]` + `wouldHaveBeen` in the log). |
 | `/jev off` | session | Whole-layer kill switch: every hook becomes a no-op until the session ends. |
 | `/jev on` | session | Re-enables the layer for the session. |
 | `/jev stats [days]` | — | Reads `<telemetry.dir>/*.jsonl` for the last `days` (default `1`) and prints the decision mix, gate confirm labels (`allow`/`deny`/`unknown`) and cache hits. |
+| `/jev trace [n]` | — | Prints the last `n` decisions (default `5`), one line each. |
+| `/jev recommend` | — | Reads the gate labels from the log and suggests whether to relax the confirm thresholds. |
 
 `shadow` and `off`/`on` are **session-only**; they are not written to config. To
 make a change permanent, set `modules.<name>.shadow` (or `enabled`) in
@@ -227,7 +229,7 @@ When the gate is live and non-shadow, a classification failure falls back to
 | `gate` | `tool_call` | enabled, shadow | deterministic fast path for obvious commands (works offline), then allow / confirm / block based on blast radius, reversibility, regenerable artefacts, intent drift, secrets, exfiltration, unverified code, installs and privilege/remote execution; optional semantic lint of writes/edits against project rules |
 | `shield` | `tool_result` | enabled, shadow | withholds prompt-injected output, masks secrets and personal data |
 | `prune` | `tool_result` | disabled | replaces low-relevance output with a summary and a temp-file pointer |
-| `watchdog` | `turn_end` | disabled | detects looping and unverified completion (a "done" claim with no test/build/lint and no read-back counts as false-done); injects advice, never aborts |
+| `watchdog` | `turn_end` | disabled | detects looping, runaway (near-identical consecutive replies), references to non-existent files, and unverified completion (a "done" claim with no test/build/lint and no read-back counts as false-done); injects advice, never aborts |
 
 `shield` and `prune` share **one** Jev request on `tool_result` and split the
 answers in code. That orchestration lives in `index.ts` so the two modules stay
@@ -326,12 +328,14 @@ disabled.
 project trust for project-local config, hash-only telemetry by default
 (`logStateContent: false`), and a kill switch (`/jev off` or unset API key).
 `baseUrl` is configurable for a self-hosted proxy that terminates TLS and applies
-organisational redaction.
+organisational redaction. It can also point at Vercel AI Gateway
+(`model: "typesafe-ai/jev"`, a gateway `baseUrl`) where a zero-data-retention
+setting is available for the TypeSafe side of the traffic.
 
 ## Testing
 
 ```bash
-npm test          # 175 unit + integration tests, no network
+npm test          # 178 unit + integration tests, no network
 npm run typecheck
 npm run test:coverage
 npm run test:pi   # end-to-end against the real `pi` CLI (needs pi >= 0.85 on PATH)

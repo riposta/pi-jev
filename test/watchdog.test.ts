@@ -4,6 +4,9 @@ import {
   commandIsEvidence,
   evaluateWatchdog,
   loopMessage,
+  missingPaths,
+  referencedPaths,
+  runawayDetected,
   verifyMessage,
   type WatchdogAnswers,
 } from "../src/modules/watchdog.ts";
@@ -52,6 +55,27 @@ describe("evidence-based done check", () => {
     expect(claimsCompletion("Done — the feature is implemented.")).toBe(true);
     expect(claimsCompletion("All set.")).toBe(true);
     expect(claimsCompletion("I am still investigating.")).toBe(false);
+  });
+});
+
+describe("claim verification and runaway", () => {
+  it("extracts referenced file paths and reports the missing ones", () => {
+    const paths = referencedPaths("I edited `src/index.ts` and tests/test.ts.");
+    expect(paths).toContain("src/index.ts");
+    expect(paths).toContain("tests/test.ts");
+    expect(missingPaths("Fixed src/does-not-exist.ts", "/tmp")).toEqual(["src/does-not-exist.ts"]);
+  });
+
+  it("detects near-identical consecutive replies", () => {
+    expect(runawayDetected("Retrying the same build...", "Retrying the same build...")).toBe(true);
+    expect(runawayDetected("Retrying the build...", "retrying the build")).toBe(true);
+    expect(runawayDetected("Fixed the bug.", "Now adding tests.")).toBe(false);
+    expect(runawayDetected("", "anything")).toBe(false);
+  });
+
+  it("names the missing files in the verify message", () => {
+    expect(verifyMessage(["src/a.ts"])).toContain("src/a.ts");
+    expect(verifyMessage()).toContain("verification");
   });
 });
 
