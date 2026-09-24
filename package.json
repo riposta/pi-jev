@@ -1,6 +1,6 @@
 {
   "name": "@riposta/pi-jev",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "A Jev classification layer for the Pi coding agent: typed routing, permission gating, context shielding, pruning and loop detection.",
   "type": "module",
   "license": "MIT",
