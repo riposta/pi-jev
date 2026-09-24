@@ -83,8 +83,16 @@ the TypeSafe key `pi-jev` uses. See the [Pi docs](https://pi.dev/docs/latest).
 export TYPESAFE_API_KEY=...
 ```
 
-The variable name is configurable (`apiKeyEnv`), and there is no phone-home: the
-key is only used for requests to `api.typesafe.ai`.
+Or, instead of an env var, log in through Pi's provider system — the key is
+entered in a masked prompt and stored in Pi's auth store:
+
+```
+/login typesafe
+```
+
+The env var wins when present; the stored key is the fallback. Check the state
+with `/jev auth`. The variable name is configurable (`apiKeyEnv`), and there is
+no phone-home: the key is only used for requests to `api.typesafe.ai`.
 
 ### 3. Install pi-jev
 
@@ -127,6 +135,7 @@ Everything lives under `/jev`. Run it with no arguments for the status summary.
 | Command | Scope | Does |
 | --- | --- | --- |
 | `/jev` | — | Status: the status line, active model and `QUESTIONS_VERSION`, each module's `off` / `shadow` / `live` state, and request/token/cost usage. An unknown subcommand prints the same summary. |
+| `/jev auth` | — | Shows whether a TypeSafe key is available and where it came from (env or `/login typesafe`). |
 | `/jev explain [hook]` | — | The most recent classification — overall, or for a specific `router`/`gate`/`shield`/`prune`/`watchdog`: every answer with its probability or score, the decision, the threshold/reason that fired, latency and token usage. |
 | `/jev shadow <module> on\|off` | session | Toggles shadow for one module: `router`, `gate`, `shield`, `prune` or `watchdog`. In shadow, the module classifies and logs but changes nothing (`[shadow]` + `wouldHaveBeen` in the log). |
 | `/jev off` | session | Whole-layer kill switch: every hook becomes a no-op until the session ends. |
@@ -340,7 +349,7 @@ setting is available for the TypeSafe side of the traffic.
 ## Testing
 
 ```bash
-npm test          # 179 unit + integration tests, no network
+npm test          # 183 unit + integration tests, no network
 npm run typecheck
 npm run test:coverage
 npm run test:pi   # end-to-end against the real `pi` CLI (needs pi >= 0.85 on PATH)

@@ -39,6 +39,8 @@ export interface ClientDeps {
   cwd: string;
   /** Pi's config directory name. Defaults to ".pi". */
   configDirName?: string;
+  /** Key resolved from Pi's provider auth (e.g. `/login typesafe`), used when the env var is unset. */
+  apiKey?: string;
   env?: NodeJS.ProcessEnv;
   fetchImpl?: typeof fetch;
   now?: () => number;
@@ -189,7 +191,9 @@ export function createClient(deps: ClientDeps): Client {
     });
   const writeFile = deps.writeFile ?? ((path: string, data: string) => writeFileSync(path, data));
 
-  const apiKey = env[config.apiKeyEnv];
+  const envKey = env[config.apiKeyEnv];
+  const apiKey =
+    typeof envKey === "string" && envKey.length > 0 ? envKey : deps.apiKey;
   const hasApiKey = typeof apiKey === "string" && apiKey.length > 0;
   let disabledReason: string | null = hasApiKey ? null : `no ${config.apiKeyEnv}`;
   if (disabledReason) state.clientDisabledReason = disabledReason;

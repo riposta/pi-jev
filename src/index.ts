@@ -61,6 +61,16 @@ export function isRepoAllowed(cwd: string, allowed: readonly string[]): boolean 
 }
 
 export default function piJev(pi: ExtensionAPI): void {
+  // Register a "typesafe" provider so `pi /login typesafe` can store the Jev
+  // key in Pi's auth store (masked prompt) instead of requiring an env var.
+  // The env var still wins when present; the stored key is the fallback.
+  pi.registerProvider("typesafe", {
+    name: "TypeSafe Jev",
+    baseUrl: "https://api.typesafe.ai",
+    apiKey: "$TYPESAFE_API_KEY",
+    api: "openai-completions",
+  });
+
   const state: SessionState = {
     layerEnabled: false,
     shadow: { router: true, gate: true, shield: true, prune: true, watchdog: true },
@@ -189,6 +199,12 @@ export default function piJev(pi: ExtensionAPI): void {
     }
 
     telemetry = createTelemetry({ config, cwd: ctx.cwd });
+    let providerKey: string | undefined;
+    try {
+      providerKey = await ctx.modelRegistry.getApiKeyForProvider("typesafe");
+    } catch {
+      providerKey = undefined;
+    }
     client = createClient({
       config,
       state,
@@ -197,6 +213,7 @@ export default function piJev(pi: ExtensionAPI): void {
       status: deps.status,
       cwd: ctx.cwd,
       configDirName: CONFIG_DIR_NAME,
+      apiKey: providerKey,
     });
 
     if (config.residency.enabled && !isRepoAllowed(ctx.cwd, config.residency.allowedRepos)) {
@@ -239,6 +256,16 @@ export default function piJev(pi: ExtensionAPI): void {
       const [sub, ...rest] = args.trim().split(/\s+/);
       if (!configured) {
         ctx.ui.notify("pi-jev is still starting.", "info");
+        return;
+      }
+      if (sub === "auth") {
+        const ok = client?.hasApiKey === true;
+        ctx.ui.notify(
+          ok
+            ? `pi-jev auth: key available (${config.apiKeyEnv} or /login typesafe)`
+            : `pi-jev auth: no key — run /login typesafe or set ${config.apiKeyEnv}`,
+          "info",
+        );
         return;
       }
       if (sub === "explain") {

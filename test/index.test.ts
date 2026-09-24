@@ -21,6 +21,7 @@ function fakePi() {
     setActiveTools: [] as string[][],
     sendMessage: [] as Array<{ message: any; options: any }>,
     appendEntry: [] as Array<{ customType: string; data: any }>,
+    registerProvider: [] as Array<{ name: string; config: any }>,
   };
   let activeTools = ["read", "write", "edit", "bash", "ls", "grep", "find"];
   const pi = {
@@ -45,6 +46,7 @@ function fakePi() {
     },
     sendMessage: (message: any, options: any) => calls.sendMessage.push({ message, options }),
     appendEntry: (customType: string, data: any) => calls.appendEntry.push({ customType, data }),
+    registerProvider: (name: string, config: unknown) => calls.registerProvider.push({ name, config }),
     exec: async () => ({ stdout: "", stderr: "", code: 0, killed: false }),
   };
   return { pi: pi as unknown as ExtensionAPI, handlers, commands, calls };
@@ -67,7 +69,10 @@ function fakeCtx(cwd: string, overrides: Partial<Record<string, unknown>> = {}):
       setWidget: vi.fn(),
     },
     sessionManager: { getSessionId: () => "session-1", getEntries: () => [] },
-    modelRegistry: { find: (provider: string, id: string) => ({ provider, id }) },
+    modelRegistry: {
+      find: (provider: string, id: string) => ({ provider, id }),
+      getApiKeyForProvider: async () => undefined,
+    },
     getSystemPrompt: () => "SYS",
   };
   return Object.assign(ctx, overrides);
@@ -268,6 +273,20 @@ describe("index wiring", () => {
     const call = (ctx.ui.setWidget.mock.calls as unknown[][]).find((entry) => entry[0] === "jev-trace");
     expect(call).toBeTruthy();
     expect(call?.[1]).toEqual(expect.arrayContaining([expect.stringContaining("router")]));
+  });
+
+  it("registers the typesafe provider for /login", async () => {
+    const { harness } = await boot();
+    expect(harness.calls.registerProvider.some((entry) => entry.name === "typesafe")).toBe(true);
+  });
+
+  it("resolves the key from Pi's provider auth when the env var is absent", async () => {
+    vi.stubEnv("TYPESAFE_API_KEY", "");
+    const { harness, ctx } = await boot();
+    ctx.modelRegistry = { ...ctx.modelRegistry, getApiKeyForProvider: async () => "provider-key" };
+    await emit(harness.handlers, "session_start", { type: "session_start", reason: "restart" }, ctx);
+    await harness.commands.get("jev")!("auth", ctx);
+    expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("key available"), "info");
   });
 
   it("serves /jev explain, trace and recommend", async () => {

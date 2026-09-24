@@ -216,6 +216,42 @@ describe("client ask", () => {
     expect(called).toBe(0);
   });
 
+  it("falls back to a provider-resolved key when the env var is unset", async () => {
+    const mock = await server();
+    const config = makeConfig({ baseUrl: mock.url });
+    const state = makeState();
+    const client = createClient({
+      config,
+      state,
+      redact: createRedactor(),
+      log: () => {},
+      status: () => {},
+      cwd: "/repo",
+      env: {},
+      apiKey: "provider-key",
+    });
+    expect(client.hasApiKey).toBe(true);
+    expect((await client.ask("gate", { command: "x" }, QUESTIONS))?.answers).toBeTruthy();
+    expect(mock.requests[0]?.auth).toBe("Bearer provider-key");
+  });
+
+  it("prefers the env var over a provider-resolved key", async () => {
+    const mock = await server();
+    const config = makeConfig({ baseUrl: mock.url });
+    const client = createClient({
+      config,
+      state: makeState(),
+      redact: createRedactor(),
+      log: () => {},
+      status: () => {},
+      cwd: "/repo",
+      env: { TYPESAFE_API_KEY: "env-key" },
+      apiKey: "provider-key",
+    });
+    expect((await client.ask("gate", { command: "x" }, QUESTIONS))?.answers).toBeTruthy();
+    expect(mock.requests[0]?.auth).toBe("Bearer env-key");
+  });
+
   it("returns null when no API key is configured", async () => {
     const mock = await server();
     const config = makeConfig({ baseUrl: mock.url });
