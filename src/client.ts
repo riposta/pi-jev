@@ -325,6 +325,23 @@ export function createClient(deps: ClientDeps): Client {
       if (signal.aborted) controller.abort();
       else signal.addEventListener("abort", onAbort, { once: true });
     }
+    const requestTimeout = () => {
+      const wrapped = new Error("timeout") as Error & { kind: string };
+      wrapped.kind = "timeout";
+      return wrapped;
+    };
+    const waitForRequest = async <T>(promise: Promise<T>): Promise<T | null> => {
+      let onAbort: (() => void) | undefined;
+      const aborted = new Promise<null>((resolve) => {
+        onAbort = () => resolve(null);
+        controller.signal.addEventListener("abort", onAbort, { once: true });
+      });
+      try {
+        return await Promise.race([promise, aborted]);
+      } finally {
+        if (onAbort) controller.signal.removeEventListener("abort", onAbort);
+      }
+    };
 
     const body = JSON.stringify({
       model: config.model,
@@ -361,9 +378,15 @@ export function createClient(deps: ClientDeps): Client {
         if (response.status === 429 || response.status === 529) {
           const retryAfter = Number(response.headers.get("retry-after")) * 1000;
           if (attempt < 2) {
-            // Drain the body so the retry does not leak the connection.
-            await response.body?.cancel().catch(() => undefined);
-            await sleep(Number.isFinite(retryAfter) && retryAfter > 0 ? Math.min(retryAfter, 2000) : 250 * 2 ** attempt);
+            // Keep retry cleanup and backoff within the request deadline.
+            const drain = response.body?.cancel().catch(() => undefined) ?? Promise.resolve();
+            const drained = await waitForRequest(drain);
+            if (drained === null) throw requestTimeout();
+            const delay = Number.isFinite(retryAfter) && retryAfter > 0
+              ? Math.min(retryAfter, 2000)
+              : 250 * 2 ** attempt;
+            const waited = await waitForRequest(sleep(delay));
+            if (waited === null) throw requestTimeout();
             continue;
           }
           const wrapped = new Error(`http ${response.status}`) as Error & { kind: string; status: number };

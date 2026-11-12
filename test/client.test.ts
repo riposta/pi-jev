@@ -162,6 +162,115 @@ describe("client ask", () => {
     expect(state.degraded).toBe(true);
   });
 
+  it.each([429, 529])("settles the request timeout during retry backoff after HTTP %s", async (status) => {
+    let fetchCalls = 0;
+    let startSleep!: () => void;
+    let releaseSleep!: () => void;
+    const sleepStarted = new Promise<void>((resolve) => {
+      startSleep = resolve;
+    });
+    const heldSleep = new Promise<void>((resolve) => {
+      releaseSleep = resolve;
+    });
+    const records: TelemetryRecord[] = [];
+    const client = createClient({
+      config: makeConfig({ modules: { gate: { timeoutMs: 20 } } }),
+      state: makeState(),
+      redact: createRedactor(),
+      log: (record) => records.push(record),
+      status: () => {},
+      cwd: "/repo",
+      env: { TYPESAFE_API_KEY: "synthetic-key" },
+      fetchImpl: async () => {
+        fetchCalls += 1;
+        return new Response("retry", { status, headers: { "retry-after": "2" } });
+      },
+      sleep: async () => {
+        startSleep();
+        await heldSleep;
+      },
+    });
+
+    const request = client.ask("gate", { command: "x" }, QUESTIONS);
+    let deadline: ReturnType<typeof setTimeout> | undefined;
+    let outcome: { settled: true; result: unknown } | { settled: false } | undefined;
+    try {
+      outcome = await Promise.race([
+        sleepStarted.then(() => request.then((result) => ({ settled: true as const, result }))),
+        new Promise<{ settled: false }>((resolve) => {
+          deadline = setTimeout(() => resolve({ settled: false }), 200);
+        }),
+      ]);
+    } finally {
+      if (deadline) clearTimeout(deadline);
+      releaseSleep();
+      await request;
+    }
+
+    expect(outcome).toEqual({ settled: true, result: null });
+    expect(records.filter((record) => record.error === "timeout")).toHaveLength(1);
+    expect(fetchCalls).toBe(1);
+  });
+
+  it("aborts a hanging retry body drain at the request deadline", async () => {
+    let fetchCalls = 0;
+    let sleepCalls = 0;
+    let startBodyCancel!: () => void;
+    let releaseBodyCancel!: () => void;
+    const bodyCancelStarted = new Promise<void>((resolve) => {
+      startBodyCancel = resolve;
+    });
+    const heldBodyCancel = new Promise<void>((resolve) => {
+      releaseBodyCancel = resolve;
+    });
+    const records: TelemetryRecord[] = [];
+    const client = createClient({
+      config: makeConfig({ modules: { gate: { timeoutMs: 20 } } }),
+      state: makeState(),
+      redact: createRedactor(),
+      log: (record) => records.push(record),
+      status: () => {},
+      cwd: "/repo",
+      env: { TYPESAFE_API_KEY: "synthetic-key" },
+      fetchImpl: async () => {
+        fetchCalls += 1;
+        return new Response(
+          new ReadableStream<Uint8Array>({
+            cancel() {
+              startBodyCancel();
+              return heldBodyCancel;
+            },
+          }),
+          { status: 429, headers: { "retry-after": "2" } },
+        );
+      },
+      sleep: async () => {
+        sleepCalls += 1;
+      },
+    });
+
+    const request = client.ask("gate", { command: "x" }, QUESTIONS);
+    let deadline: ReturnType<typeof setTimeout> | undefined;
+    let outcome: { settled: true; result: unknown } | { settled: false } | undefined;
+    try {
+      outcome = await Promise.race([
+        bodyCancelStarted.then(() => request.then((result) => ({ settled: true as const, result }))),
+        new Promise<{ settled: false }>((resolve) => {
+          deadline = setTimeout(() => resolve({ settled: false }), 200);
+        }),
+      ]);
+    } finally {
+      if (deadline) clearTimeout(deadline);
+      releaseBodyCancel();
+      await request;
+    }
+
+    expect(outcome).toEqual({ settled: true, result: null });
+    expect(records.filter((record) => record.error === "timeout")).toHaveLength(1);
+    expect(fetchCalls).toBe(1);
+    expect(sleepCalls).toBe(0);
+  });
+
   it("handles network failures with the same three-strike rule", async () => {
     const failing: typeof fetch = async () => {
       throw new Error("ECONNREFUSED");
